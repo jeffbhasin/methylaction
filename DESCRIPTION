@@ -1,0 +1,16 @@
+Package: methylaction
+Maintainer: Jeffrey Bhasin <jeffb@case.edu>
+Author: Jeffrey Bhasin <jeffb@case.edu>
+Version: 0.1
+License: GPL-3
+Title: methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)
+Description: Performs a two-stage testing approach on non-overlapping windows genome-wide to detect differentially methylated regions (DMRs). The statistical DMRs called by differences in group means are merged with methylation frequencies derived from modeling implemented in the BayMeth functions of Repitools to aid in interpretation. Multi-group statistical testing is handled with an analysis of deviance (ANODEV) approach using the GLM functionality of DESeq.
+Depends:
+    data.table,
+    GenomicRanges,
+    goldmine
+Imports:
+    parallel,
+    RColorBrewer,
+    DESeq,
+    Repitools
