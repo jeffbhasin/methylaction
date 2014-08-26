@@ -46,7 +46,16 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-# Produce a GRanges of windows and their counts
+#' Produce a GRanges of windows and their read counts
+#'
+#' Will return a GenomicRanges object for non-overlapping windows genome-wide for the genome given as a bsgenome object for the chromosomes given in chrs. The values() of the GRanges will contain a table of counts for each sample at each window.
+#' @param samp Sample data.frame from readSampleInfo()
+#' @param begenome A b-string genome (bsgenome) object from Bioconductor for the genome of interest.
+#' @param chrs Which chromosomes to consider.
+#' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage.
+#' @param winsize Size of the non-overlapping windows.
+#' @return A GenomicRanges object with values() containing a table of counts for each sample at each window.
+#' @export
 getCounts <- function(samp, bsgenome, chrs, fragsize, winsize)
 {
 	bins.gr <- genomeBlocks(bsgenome,chrs=chrs,width=winsize)
