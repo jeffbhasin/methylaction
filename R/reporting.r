@@ -4,13 +4,52 @@
 #' Summary stats for a run of methylaction()
 #'
 #' Will return information about number of windows/regions that pass cutoffs at each stage of the analysis. Useful for paramater tuning.
-#' @param samp Description of samples from readSampleInfo()
 #' @param ma Output object from methylaction()
 #' @return A data.frame with the summary statistics.
 #' @export
-maSummary <- function(samp, ma)
+maSummary <- function(ma)
 {
+	per <- function(x,digits=2){round(x*100,digits)}
 
+	# Initial Filtering
+	df <- data.frame(stat="Window Size",count=ma$opts$winsize,percent="",stringsAsFactors=F)
+	wins <- length(ma$windows$zero) + length(ma$windows$filtered) + length(ma$windows$signal)
+	df <- rbind(df,c("Total Windows",wins,""))
+	zero <- length(ma$windows$zero)
+	filt <- length(ma$windows$filtered)
+	signal <- length(ma$windows$signal)
+	df <- rbind(df,c("All Zero Windows (filtered)",zero,per(zero/wins)))
+	df <- rbind(df,c("All Below FDR Windows (filtered)",filt,per(filt/wins)))
+	df <- rbind(df,c("Signal Windows (move on to stage one)",signal,per(signal/wins)))
+
+	# Stage One Testing
+	owins <- length(ma$test.one$patterns)
+	osig <- length(ma$test.one$patterns[!(ma$test.one$patterns$patt %in% c("000or111","ambig"))])
+	ons <- length(ma$test.one$patterns[(ma$test.one$patterns$patt %in% c("000or111"))])
+	oamb <- length(ma$test.one$patterns[(ma$test.one$patterns$patt %in% c("ambig"))])
+	df <- rbind(df,c("Windows Tested in Stage One",owins,""))
+	df <- rbind(df,c("Sig Pattern in Stage One",osig,per(osig/owins)))
+	df <- rbind(df,c("Non-Sig Pattern in Stage One",ons,per(ons/owins)))
+	df <- rbind(df,c("Ambig Pattern in Stage One",oamb,per(oamb/owins)))
+	df <- rbind(df,c("Regions Formed By Joining Adjacent Patterns",length(ma$test.one$regions),""))
+
+	# Stage Two Testing
+	treg <- length(ma$test.two$sig) + length(ma$test.two$ns)
+	df <- rbind(df,c("Regions Tested in Stage Two",treg,""))
+	tsig <- length(ma$test.two$sig)
+	df <- rbind(df,c("Regions That Pass ANODEV",tsig,per(tsig/treg)))
+
+	tpsig <- length(ma$test.two$dmr[!(ma$test.two$dmr$pattern %in% c("000or111","ambig"))])
+	tpns <- length(ma$test.two$dmr[(ma$test.two$dmr$pattern %in% c("000or111"))])
+	tpamb <- length(ma$test.two$dmr[(ma$test.two$dmr$pattern %in% c("ambig"))])
+
+	df <- rbind(df,c("ANODEV Sig with Sig Pattern",tpsig,per(tpsig/tsig)))
+	df <- rbind(df,c("ANODEV Sig with Non-sig Pattern",tpns,per(tpns/tsig)))
+	df <- rbind(df,c("ANODEV Sig with Ambig Pattern",tpamb,per(tpamb/tsig)))
+
+	# DMRs
+	df <- rbind(df,c("Total DMRs",tpsig,""))
+	return(df)
 }
 # --------------------------------------------------------------------
 

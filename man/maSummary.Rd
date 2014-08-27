@@ -3,11 +3,9 @@
 \alias{maSummary}
 \title{Summary stats for a run of methylaction()}
 \usage{
-maSummary(samp, ma)
+maSummary(ma)
 }
 \arguments{
-\item{samp}{Description of samples from readSampleInfo()}
-
 \item{ma}{Output object from methylaction()}
 }
 \value{
