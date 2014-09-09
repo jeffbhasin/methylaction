@@ -78,7 +78,7 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	sizefactors <- estimateSizeFactorsForMatrix(as.matrix(values(windows$signal)))
 
 	# Testing Stage 1
-	test.one <- testOne(samp=samp,bins=windows$signal,chrs=as.vector(seqnames(counts)),sizefactors=sizefactors,cutoff=stageone.p,minsize=minsize,ncore=ncore)
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,cutoff=stageone.p,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
 	test.two <- testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
@@ -232,7 +232,7 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	message("Begin stage two testing")
 
 	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
-	recounts <- annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0)
+	recounts <- Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0)
 	colnames(recounts) <- samp$sample
 
 	# Do an ANOVA-like framework
@@ -284,10 +284,18 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	regions$anodev.p <- anodev
 	regions$anodev.padj <- anodev.padj
 
+	# Get norm counts
+	cds <- newCountDataSet(recounts,samp$group)
+	sizeFactors(cds) <- sizefactors
+	#values(regions) <- cbind(as.data.frame(values(regions)),counts(cds,normalized=TRUE))
+	normcounts <- counts(cds,normalized=TRUE)
+
 	anodev.keep <- (anodev.padj<anodev.p) & !(is.na(anodev.padj))
 
 	test.two <- list()
 	test.two$ns <- regions[!anodev.keep]
+	test.two$ns.counts <- regions[!anodev.keep]
+	values(test.two$ns.counts) <- normcounts[!anodev.keep,]
 
 	regions.sig <- regions[anodev.keep]
 	recounts.sig <- recounts[anodev.keep,]
@@ -298,7 +306,7 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	{
 		message("Testing ",x)
 		s <- strsplit(x,"")[[1]]
-		out <- testDESeq(recounts.sig,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-test2-",x),sizefactors,ncore)
+		out <- methylaction:::testDESeq(recounts.sig,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-test2-",x),sizefactors,ncore)
 		return(out)
 	}
 	testres <- mclapply(todo,dotest,mc.cores=1)
@@ -358,6 +366,8 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	
 	test.two$sig <- regions[anodev.keep]
 	values(test.two$sig) <- patt
+	test.two$sig.counts <- regions[anodev.keep]
+	values(test.two$sig.counts) <- normcounts[anodev.keep,]
 
 	#as.data.frame(table(patt$patt))
 
@@ -405,6 +415,8 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 
 	# Make frequency columns
 	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+
+	test.two$baymeth <- me
 
 	me.call <- me>0.75
 	meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(me.call[,i]>0.75)))

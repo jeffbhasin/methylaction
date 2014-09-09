@@ -29,7 +29,7 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 		message("Auto-picking group colors from RColorBrewer")
 		if(ngroup<=9)
 		{
-			colors <- brewer.pal(ngroup,"Set1")
+			colors <- RColorBrewer::brewer.pal(ngroup,"Set1")
 		} else
 		{
 			colors <- colorRampPalette(brewer.pal(9,"Set1"))(ngroup)

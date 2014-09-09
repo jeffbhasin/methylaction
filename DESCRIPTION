@@ -15,6 +15,9 @@ Description: Performs a two-stage testing approach on non-overlapping windows
 Depends:
     data.table,
     GenomicRanges,
+    IRanges,
+    DESeq,
+    Repitools,
     goldmine
 Imports:
     parallel,
