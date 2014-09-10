@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stageone.p, anodev.p, post.p, minsize=150, ncore=1)
+methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -78,7 +78,7 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	sizefactors <- estimateSizeFactorsForMatrix(as.matrix(values(windows$signal)))
 
 	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,cutoff=stageone.p,minsize=minsize,ncore=ncore)
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
 	test.two <- testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
@@ -112,11 +112,11 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 		#head( counts( cds, normalized=TRUE ) )
 
 		# estimate the dispersions for each gene
-		message("Estimating dispersions")
+		#message("Estimating dispersions")
 		cds <- estimateDispersions(cds,fitType="local",sharingMode="gene-est-only")
 
 		# perform the testing
-		message("Performing test")
+		#message("Performing test")
 		res <- nbinomTest(cds,a,b)
 		return(res)
 	}
@@ -132,7 +132,7 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 # --------------------------------------------------------------------
 # Stage one testing
-testOne <- function(samp,bins,chrs,sizefactors,cutoff=0.05,minsize=150,ncore=3)
+testOne <- function(samp,bins,chrs,sizefactors,stageone.p=0.05,minsize=150,joindist=200,ncore=3)
 {
 	message("Begin stage one testing")
 
@@ -145,7 +145,7 @@ testOne <- function(samp,bins,chrs,sizefactors,cutoff=0.05,minsize=150,ncore=3)
 	{
 		message("Testing ",x)
 		s <- strsplit(x,"")[[1]]
-		out <- testDESeq(bins.mat,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-",x),sizefactors=sizefactors,ncore=ncore)
+		out <- methylaction:::testDESeq(bins.mat,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-",x),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
 	testres <- lapply(todo,dotest)
@@ -195,21 +195,30 @@ testOne <- function(samp,bins,chrs,sizefactors,cutoff=0.05,minsize=150,ncore=3)
 		return(tests)
 	}
 	
-	patt <- callPatterns(testres$ab, testres$ac, testres$bc, cutoff=cutoff)
+	patt <- callPatterns(testres$ab, testres$ac, testres$bc, cutoff=stageone.p)
 
 	# join adjacent equivalent patterns
+	message("Reduction by pattern and disjoing regions")
 	bins.gr <- bins
 	values(bins.gr) <- NULL
 	bins.gr$pattTestOne <- patt$patt
+	
 	# split out by pattern
-	bins.bypatt <- split(bins.gr,bins.gr$pattTestOne)
-	# reduce each pattern with itself
-	bins.red <- lapply(bins.bypatt,reduce)
+	sigpatt <- bins.gr[!(bins.gr$pattTestOne %in% c("ambig","000or111"))]
+	pattrows <- sigpatt$pattTestOne
+	values(sigpatt) <- NULL
+	bins.bypatt <- split(sigpatt,pattrows)
+
+	# reduce each pattern with itself within the gap distance
+	bins.red <- lapply(bins.bypatt,reduce,min.gapwidth=joindist)
 	for(i in 1:length(bins.red)){bins.red[[i]]$pattTestOne <- names(bins.red)[i]}
 
-	# join back into master list
-	regions.gr <- do.call(c,unname(bins.red))
-	regions.gr <- regions.gr[!(regions.gr$pattTestOne %in% c("ambig","000or111"))]
+	# only keep reduced ranges if minsize or larger
+	bins.red <- lapply(bins.red,function(x) x[width(x)>=minsize])
+
+	# deal with conflicting extensions using disjoin()
+	bins.red.gr <- do.call(c,unname(bins.red))
+	regions.gr <- disjoin(bins.red.gr)
 	regions <- regions.gr[width(regions.gr)>=minsize]
 
 	# output: genomic ranges to pass to stage 2

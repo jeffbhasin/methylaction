@@ -17,7 +17,6 @@ Depends:
     GenomicRanges,
     IRanges,
     DESeq,
-    Repitools,
     goldmine
 Imports:
     parallel,
