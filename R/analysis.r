@@ -402,41 +402,41 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	# Output list of sig DMRs
 	
 	# Run baymeth on these regions to add freq columns
-	message("Calculating CpG density for BayMeth")
-	gbA <- resize(regions.sig, 1, fix="center")
-	cpgdens <- cpgDensityCalc(gbA, organism=bsgenome, w.function="linear", window=700)
+	#message("Calculating CpG density for BayMeth")
+	#gbA <- resize(regions.sig, 1, fix="center")
+	#cpgdens <- cpgDensityCalc(gbA, organism=bsgenome, w.function="linear", window=700)
 
 	# Make BayMethList object
-	message("Running BayMeth")
-	bml <- BayMethList(window=regions.sig,control=matrix(),sampleInterest=recounts.sig,cpgDens=cpgdens)
+	#message("Running BayMeth")
+	#bml <- BayMethList(window=regions.sig,control=matrix(),sampleInterest=recounts.sig,cpgDens=cpgdens)
 
 	# Set 0-offets because we have no M.SssI control
-	fOffset(bml) <- t(matrix(rep(0,ncol(recounts))))
+	#fOffset(bml) <- t(matrix(rep(0,ncol(recounts))))
 
 	# For estimating parameters
-	bml <- empBayes(bml, ngroups = 100, ncomp = 1, maxBins = 50000, method="beta", ncpu=ncore, verbose=F)
+	#bml <- empBayes(bml, ngroups = 100, ncomp = 1, maxBins = 50000, method="beta", ncpu=ncore, verbose=F)
 
 	# Get methylation estimates
-	bml <- methylEst(bml, verbose=F, controlCI = list(compute = FALSE))
+	#bml <- methylEst(bml, verbose=F, controlCI = list(compute = FALSE))
 
 	# Obtain Final Values
-	me <- methEst(bml)$mean
+	#me <- methEst(bml)$mean
 
 	# Make frequency columns
-	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+	#colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
 
-	test.two$baymeth <- me
+	#test.two$baymeth <- me
 
-	me.call <- me>0.75
-	meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(me.call[,i]>0.75)))
-	colnames(meth.freq) <- paste0(unique(samp$group),".freq")
+	#me.call <- me>0.75
+	#meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(me.call[,i]>0.75)))
+	#colnames(meth.freq) <- paste0(unique(samp$group),".freq")
 
 	# Make means columns
 	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(recounts.sig[,i])))
 	colnames(counts.means) <- paste0(unique(samp$group),".mean")
 
 	# Final output!
-	dmr <- cbind(dmr,counts.means,meth.freq)
+	dmr <- cbind(dmr,counts.means)
 	#dmr$f <- paste(dmr$a,dmr$b,dmr$c,sep=",")
 
 	#test.two <- list()
