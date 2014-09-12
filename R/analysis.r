@@ -60,7 +60,7 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
+	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
 
 	# Output results
 	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
@@ -270,12 +270,12 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
+testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p, fdr.filter)
 {
 	message("Begin stage two testing")
 
 	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
-	recounts <- Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0)
+	recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
 	colnames(recounts) <- samp$sample
 
 	# Do an ANOVA-like framework
@@ -418,55 +418,58 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	#as.data.frame(table(patt$patt))
 
 	dmr <- data.frame(chr=seqnames(regions.sig),start=start(regions.sig),end=end(regions.sig),width=width(regions.sig),anodev.padj=regions.sig$anodev.padj,pattern=patt$patt)
-	#write.table(dmr,file="tmp.bed",row.names=F,col.names=F,quote=F,sep="\t")
 	
-	#dpt <- fread("~/lustre/EurBLHsp0.1/methyl.20140701185731.sites.csv")
-	#dmr$dpt <- makeGRanges(dmr) %over% makeGRanges(dpt)
-	#dmr$url <- goldmine:::getBrowserURLs(makeGRanges(dmr),"hg19")
-	#write.csv(dmr,file="tmp.csv",row.names=F)
-
-	# want to look at DPT sites this one does not pick up
-	#dpt$madmr <- makeGRanges(dpt) %over% makeGRanges(dmr)
-	#dpt$url <- goldmine:::getBrowserURLs(makeGRanges(dpt),"hg19")
-	#write.csv(dpt,file="tmp2.csv",row.names=F)
-
-	#table(makeGRanges(dpt) %over% makeGRanges(dmr))
-	#table(makeGRanges(dmr) %over% makeGRanges(dpt))
-
-	#table(makeGRanges(dpt[pattern=="001",]) %over% makeGRanges(dmr[dmr$patt=="001",]))
-	#table(makeGRanges(dmr) %over% makeGRanges(dpt))
-
 	# Output list of sig DMRs
-	
-	# Run baymeth on these regions to add freq columns
-	#message("Calculating CpG density for BayMeth")
-	#gbA <- resize(regions.sig, 1, fix="center")
-	#cpgdens <- cpgDensityCalc(gbA, organism=bsgenome, w.function="linear", window=700)
-
-	# Make BayMethList object
-	#message("Running BayMeth")
-	#bml <- BayMethList(window=regions.sig,control=matrix(),sampleInterest=recounts.sig,cpgDens=cpgdens)
-
-	# Set 0-offets because we have no M.SssI control
-	#fOffset(bml) <- t(matrix(rep(0,ncol(recounts))))
-
-	# For estimating parameters
-	#bml <- empBayes(bml, ngroups = 100, ncomp = 1, maxBins = 50000, method="beta", ncpu=ncore, verbose=F)
-
-	# Get methylation estimates
-	#bml <- methylEst(bml, verbose=F, controlCI = list(compute = FALSE))
-
-	# Obtain Final Values
-	#me <- methEst(bml)$mean
 
 	# Make frequency columns
 	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
 
-	#test.two$baymeth <- me
+	# Freq Calling via POI
+	#cuts <- as.matrix(width(dmr)/50) %*% cuts
+	cnt <- recounts.sig/(dmr$width/winsize)
 
-	#me.call <- me>0.75
-	#meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(me.call[,i]>0.75)))
-	#colnames(meth.freq) <- paste0(unique(samp$group),".freq")
+	#meth <- t(t(counts)>cuts)
+	# call yes/no for each sample based on poi cuts
+	meth <- t(t(cnt)>fdr.filter$cuts)
+
+	# call freqs
+	meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(meth[,i,drop=F])))
+
+	# call percentages
+	meth.per <- t(t(meth.freq)/as.vector(table(samp$group)))
+	colnames(meth.per) <- paste0(colnames(meth.per),".per")
+
+	# Make means columns - for the per window counts
+	perwin.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(cnt[,i])))
+	colnames(perwin.means) <- paste0(unique(samp$group),".perwin.mean")
+
+	dmrfreq <- cbind(dmr,cnt,perwin.means,meth.freq,meth.per)
+	dmrfreq$dmrid <- 1:nrow(dmr)
+
+	# Want to know sharpness - should be all 0 groups are no more than 1/3 meth, and all 1 groups are no less than 2/3 meth
+	patts <- as.character(unique(dmrfreq$pattern))
+	patts <- patts[!(patts %in% c("ambig","000or111"))]
+
+	sharpness <- function(patt,meth=2/3,unmeth=1/3)
+	{
+		myfreq <- dmrfreq[dmrfreq$pattern==patt,c("a.per","b.per","c.per")]
+		chars <- strsplit(patt,"")[[1]]
+		checkit <- chars
+		checkit[chars=="0"] <- unmeth
+		checkit[chars=="1"] <- meth
+
+		lt <- t(t(myfreq)<=checkit)
+		gt <- t(t(myfreq)>=checkit)
+
+		# Call each group as sharp or not, they must all be sharp to call the site as sharp
+		sharp <- rowSums(cbind(lt[,chars=="0",drop=F],gt[,chars=="1",drop=F]))==3
+		
+		ret <- dmrfreq[dmrfreq$pattern==patt,]
+		ret$sharp <- sharp
+		ret
+	}
+	res <- lapply(patts,sharpness)
+	dmrcalled <- do.call(rbind,unname(res))
 
 	# Make means columns
 	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(recounts.sig[,i])))
@@ -480,6 +483,7 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	# test.two$ns
 	#test.two$sig <- # GRanges with the normalized DEseq counts + deviances used from the ANODEV stage - also have these available in the $ns object
 	test.two$dmr <- makeGRanges(dmr)
+	test.two$dmrcalled <- makeGRanges(dmrcalled)
 
 	return(test.two)
 }
