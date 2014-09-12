@@ -189,9 +189,9 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 		# Fix for NA p-values
 		# According to S. Anders: "Only in case 1 (zero counts in _all_ samples that are involved in the comparison), the p values is NA. This makes sense because if you do not observe anything from a gene you cannot say anything about it."
 		# I will set these to be p-value 1, so they never come up as sig differences
-		tests[is.na(ab.p),ab.p:=1]
-		tests[is.na(ac.p),ac.p:=1]
-		tests[is.na(bc.p),bc.p:=1]
+		tests[is.na(ab.p),ab.sig:=FALSE]
+		tests[is.na(ac.p),ac.sig:=FALSE]
+		tests[is.na(bc.p),bc.sig:=FALSE]
 
 		# filter using codes:
 		# -1 = sig down
@@ -376,6 +376,9 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 
 		tests <- data.table(ab.p=ab$pval,ab.l2fc=ab$log2FoldChange,ab.sig=ab$pval<cutoff,ab.dir=ab$direction,ac.p=ac$pval,ac.l2fc=ac$log2FoldChange,ac.sig=ac$pval<cutoff,ac.dir=ac$direction,bc.p=bc$pval,bc.l2fc=bc$log2FoldChange,bc.sig=bc$pval<cutoff,bc.dir=bc$direction)
 
+		tests[is.na(ab.p),ab.sig:=FALSE]
+		tests[is.na(ac.p),ac.sig:=FALSE]
+		tests[is.na(bc.p),bc.sig:=FALSE]
 
 		# filter using codes:
 		# -1 = sig down
