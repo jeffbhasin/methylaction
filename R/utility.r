@@ -5,7 +5,7 @@
 #'
 #' The CSV file must contain the following columns: "sample" - unique sample IDs, "group" - group IDs, "bam" - path to BAM file containing aligned reads for the sample. Columns with other names will be ignored. Note that in subsequent reporting of pattern strings (where each digit represents a group), digits for each group will be ordered in the order they first appear in this samplesheet.
 #' @param file Path to the CSV samplesheet to open. Must contain the columns described above.
-#' @param colors Vector of colors (one for each group) in same order as groups appear in the sample file. These will be uniform colors used in the plotting functions for these groups. Give colors as hex codes. If none provided they will be auto-selected with RColorBrewer.
+#' @param colors Vector of colors (one for each group) in same order as groups appear in the sample file. These will be uniform colors used in the plotting functions for these groups. Give colors as hex codes. If none provided they will be auto-selected with RColorBrewer. If there is a column named "color" in the CSV, then this will always be used.
 #' @return A data.frame of the samplesheet that will be valid input to the other function's "samp" arguments.
 #' @export
 readSampleInfo <- function(file=NULL,colors=NULL)
@@ -24,7 +24,7 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 	print(summary(samplesheet$group))
 	samplesheet <- samplesheet[order(samplesheet$group,samplesheet$sample),]
 
-	if(is.null(colors))
+	if(is.null(colors) & sum(colnames(samplesheet)=="color")==0)
 	{
 		message("Auto-picking group colors from RColorBrewer")
 		if(ngroup<=9)
@@ -35,7 +35,7 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 			colors <- colorRampPalette(brewer.pal(9,"Set1"))(ngroup)
 		}
 		samplesheet$color <- colors[as.numeric(samplesheet$group)]
-	} else
+	} else if(!is.null(colors))
 	{
 		if(length(colors)!=ngroup){stop("colors vector must equal number of groups in file")}
 		samplesheet$color <- colors[as.numeric(samplesheet$group)]
