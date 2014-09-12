@@ -423,7 +423,7 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p)
 	#me <- methEst(bml)$mean
 
 	# Make frequency columns
-	#colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
 
 	#test.two$baymeth <- me
 
