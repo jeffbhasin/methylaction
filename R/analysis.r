@@ -30,7 +30,7 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
 
 	# Do Initial Filtering
-	fdr.filter <- filter(counts, samp, poifdr)
+	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
 
 	# Get Signal Bins Only
 	message("Filtering to Signal Windows")
@@ -57,13 +57,13 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	values(windows$signal.norm) <- normcounts
 
 	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
+	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
 
 	# Output results
-	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
 
 }
 # --------------------------------------------------------------------
@@ -142,6 +142,8 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 	finalres[,id:=NULL]
 	finalres[,padj:=NULL]
 
+	# Remove NA p-value by setting to 0 (when b mean is 0) or 1, whichever is appropriate
+
 	return(finalres)
 }
 # --------------------------------------------------------------------
@@ -149,7 +151,7 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 # --------------------------------------------------------------------
 # Stage one testing
-testOne <- function(samp,bins,chrs,sizefactors,stageone.p=0.05,minsize=150,joindist=200,ncore=3)
+testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsize=150,joindist=200,ncore=3)
 {
 	message("Begin stage one testing")
 
@@ -184,6 +186,13 @@ testOne <- function(samp,bins,chrs,sizefactors,stageone.p=0.05,minsize=150,joind
 
 		tests <- data.table(ab.p=ab$pval,ab.l2fc=ab$log2FoldChange,ab.sig=ab$pval<cutoff,ab.dir=ab$direction,ac.p=ac$pval,ac.l2fc=ac$log2FoldChange,ac.sig=ac$pval<cutoff,ac.dir=ac$direction,bc.p=bc$pval,bc.l2fc=bc$log2FoldChange,bc.sig=bc$pval<cutoff,bc.dir=bc$direction)
 
+		# Fix for NA p-values
+		# According to S. Anders: "Only in case 1 (zero counts in _all_ samples that are involved in the comparison), the p values is NA. This makes sense because if you do not observe anything from a gene you cannot say anything about it."
+		# I will set these to be p-value 1, so they never come up as sig differences
+		tests[is.na(ab.p),ab.p:=1]
+		tests[is.na(ac.p),ac.p:=1]
+		tests[is.na(bc.p),bc.p:=1]
+
 		# filter using codes:
 		# -1 = sig down
 		# 0 = NS
@@ -213,6 +222,14 @@ testOne <- function(samp,bins,chrs,sizefactors,stageone.p=0.05,minsize=150,joind
 	}
 	
 	patt <- callPatterns(testres$ab, testres$ac, testres$bc, cutoff=stageone.p)
+
+	# Make means columns
+	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(as.matrix(values(signal.norm[,i])))))
+	colnames(counts.means) <- paste0(unique(samp$group),".mean")
+
+	# Combine so we get these in the output
+	patt <- data.table(counts.means,patt)
 
 	# join adjacent equivalent patterns
 	message("Reduction by pattern and disjoing regions")
