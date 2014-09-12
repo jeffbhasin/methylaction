@@ -29,19 +29,60 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	names(groupcodes) <- unique(samp$group)
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
 
-	# Make counts matrix
-	counts.mat <- as.matrix(values(counts))
+	# Do Initial Filtering
+	fdr.filter <- filter(counts, samp, poifdr)
 
+	# Get Signal Bins Only
+	message("Filtering to Signal Windows")
+	filter.pass <- rowSums(t(t(as.matrix(values(counts)))>fdr.filter$cuts))>0
+
+	# Compute Size Factors based on Filtered Regions - will always use these for all subsequent tests
+	message("Computing size factors")
+	sizefactors <- estimateSizeFactorsForMatrix(as.matrix(values(counts[filter.pass])))
+
+	# Make list dividing up the data
+	# Normalize counts first
+	message("Saving Normalized Counts")
+	cds <- newCountDataSet(as.matrix(values(counts[filter.pass])),samp$group)
+	sizeFactors(cds) <- sizefactors
+	normcounts <- counts(cds,normalized=TRUE)
+
+	zero <- rowSums(as.matrix(values(counts)))==0
+	wingr <- GRanges(seqnames(counts),IRanges(start(counts),end(counts)))
+	windows <- list()
+	windows$zero <- wingr[zero]
+	windows$filtered <- counts[!filter.pass & !zero]
+	windows$signal <- counts[filter.pass]
+	windows$signal.norm <- wingr[filter.pass]
+	values(windows$signal.norm) <- normcounts
+
+	# Testing Stage 1
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+
+	# Testing Stage 2 + Methylation Modelling
+	test.two <- testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
+
+	# Output results
+	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+
+}
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# Initial Filtering
+filter <- function(counts, samp, poifdr)
+{
 	# Initial Filtering
 	message("Computing window count frequencies")
 	countints <- 0:10
-	histo <- do.call(rbind,lapply(countints, FUN=function(x) {message(x);colSums(counts.mat==x);}))
-	histo <- rbind(histo,colSums(counts.mat>max(countints)))
+	histo <- do.call(rbind,lapply(countints, FUN=function(x) {message(x);colSums(as.matrix(values(counts))==x);}))
+	histo <- rbind(histo,colSums(as.matrix(values(counts))>max(countints)))
 	rownames(histo) <- c(countints,paste0(">",max(countints)))
 	counts.tab <- lapply(1:ncol(histo),function(x) data.frame(count=countints[-1],freq=histo[2:length(countints)-1,x]))
 	names(counts.tab) <- colnames(histo)
 
-	dpt.poi <- function(histo, counts.tab,libsizes,binsize,genomesize,cutoff=poifdr)
+	# This filtering equation based on code by Yaomin Xu
+	dpt.poi <- function(histo, counts.tab,cutoff=poifdr)
 	{
 		est.pois.lambda <- function(tab)
 		{
@@ -60,32 +101,8 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 		cuts <- apply(ifsatisfy, MARGIN=2, FUN=function(x) max(seq(1,length(x))[!x]))
 		list(histo=histo,fdr=round(fdr,5),cuts=cuts)
 	}
-	fdr.filter <- dpt.poi(histo, counts.tab,libsizes,binsize,sum(as.numeric(chrlens)))
-
-	# Apply samplepoi cutoffs
-	message("Performing Initial Filtering")
-	filter.pass <- rowSums(counts.mat>fdr.filter$cuts)>0
-
-	# Make list dividing up the data
-	zero <- rowSums(counts.mat)==0
-	windows <- list()
-	windows$zero <- counts[zero]
-	windows$filtered <- counts[!filter.pass & !zero]
-	windows$signal <- counts[filter.pass]
-
-	# Compute Size Factors based on Filtered Regions - will always use these for all subsequent tests
-	message("Computing size factors")
-	sizefactors <- estimateSizeFactorsForMatrix(as.matrix(values(windows$signal)))
-
-	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-
-	# Testing Stage 2 + Methylation Modelling
-	test.two <- testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p)
-
-	# Output results
-	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
-
+	fdr.filter <- dpt.poi(histo, counts.tab, cutoff=poifdr)
+	return(fdr.filter)
 }
 # --------------------------------------------------------------------
 
