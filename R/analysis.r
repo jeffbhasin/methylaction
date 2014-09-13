@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, ncore=1)
+methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=NULL, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -56,15 +56,50 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	windows$signal.norm <- wingr[filter.pass]
 	values(windows$signal.norm) <- normcounts
 
-	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	if(is.null(nperms))
+	{
+		# Testing Stage 1
+		test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
-	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
+		# Testing Stage 2 + Methylation Modelling
+		test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
 
-	# Output results
-	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+		# Output results
+		ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+	} else
+	{
+		doperm <- function()
+		{
+			rand <- sample(1:nrow(samp),nrow(samp),replace=F)
+			mysamp <- samp
+			mysamp$sample <- mysamp$sample[rand]
 
+			mybins <- windows$signal
+			values(mybins) <- values(mybins)[,rand]
+			mysig <- windows$signal.norm
+			values(mysig) <- values(mysig)[,rand]
+			mysizes <- sizefactors[rand]
+
+			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(counts))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
+			ret <- test.two$dmrcalled
+			rm(test.one)
+			rm(test.two)
+			rm(mybins)
+			rm(mysig)
+			gc()
+
+			getbams <- samp$bam
+			names(getbams) <- samp$sample
+			getbams <- str_replace(getbams,"~","/home/bhasinj")
+			fc <- featureCounts(files=getbams[1:3],annot.ext=data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="*"),readExtension3=fragsize-36,allowMultiOverlap=T,nthread=ncore)
+
+			return(ret)
+		}
+		ma <- lapply(1:nperms, doperm)
+	}
+
+	return(ma)
 }
 # --------------------------------------------------------------------
 
@@ -130,7 +165,7 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 		# estimate the dispersions for each gene
 		#message("Estimating dispersions")
-		cds <- estimateDispersions(cds,fitType="local",sharingMode="gene-est-only")
+		cds <- estimateDispersions(cds,fitType="parametric",sharingMode="gene-est-only")
 
 		# perform the testing
 		#message("Performing test")

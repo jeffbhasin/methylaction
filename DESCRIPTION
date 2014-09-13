@@ -22,4 +22,5 @@ Imports:
     parallel,
     RColorBrewer,
     DESeq,
+    GenomicAlignments,
     Repitools

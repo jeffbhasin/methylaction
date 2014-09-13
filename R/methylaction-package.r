@@ -2,5 +2,5 @@
 #'
 #' @name methylaction-package
 #' @docType package
-#' @import data.table GenomicRanges IRanges DESeq Repitools goldmine
+#' @import data.table GenomicRanges IRanges DESeq goldmine
 NULL
