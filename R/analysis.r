@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=NULL, ncore=1)
+methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -56,23 +56,24 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 	windows$signal.norm <- wingr[filter.pass]
 	values(windows$signal.norm) <- normcounts
 
-	if(is.null(nperms))
-	{
-		# Testing Stage 1
-		test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	# Testing Stage 1
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
-		# Testing Stage 2 + Methylation Modelling
-		test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
+	# Testing Stage 2 + Methylation Modelling
+	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
-		# Output results
-		ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
-	} else
+	# Output results
+	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+
+	if(nperms>0)
 	{
-		doperm <- function()
+		doperm <- function(perm)
 		{
+			message("Permutation numer ",perm)
 			rand <- sample(1:nrow(samp),nrow(samp),replace=F)
 			mysamp <- samp
 			mysamp$sample <- mysamp$sample[rand]
+			mysamp$bam <- mysamp$bam[rand]
 
 			mybins <- windows$signal
 			values(mybins) <- values(mybins)[,rand]
@@ -81,22 +82,66 @@ methylaction <- function(samp, counts, bsgenome, fragsize, winsize, poifdr, stag
 			mysizes <- sizefactors[rand]
 
 			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(counts))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=sizefactors, bsgenome=bsgenome, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter)
+			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
-			rm(test.one)
-			rm(test.two)
-			rm(mybins)
-			rm(mysig)
+			rm(test.one,test.two,mybins,mysig)
 			gc()
-
-			getbams <- samp$bam
-			names(getbams) <- samp$sample
-			getbams <- str_replace(getbams,"~","/home/bhasinj")
-			fc <- featureCounts(files=getbams[1:3],annot.ext=data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="*"),readExtension3=fragsize-36,allowMultiOverlap=T,nthread=ncore)
 
 			return(ret)
 		}
-		ma <- lapply(1:nperms, doperm)
+		# This is the loop that does the perms, can replace this with some call to clusterLapplyLB
+		# Maybe have function take a cl argument, if null then just ignore and call lapply
+		# Otherwise, build a cluster off that cl object and run the perms in parallel over it
+		# Need to make sure we handle I/O to the cluster correctly, i.e. send once and then do many perms so the nJobs is always going to be some divisor of node counts?
+		maperm <- lapply(1:nperms, doperm)
+
+		# make observed event table
+		gettab <- function(dmrcalled)
+		{
+			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$sharp))
+			matab <- cbind(matab,rowSums(matab))
+			colnames(matab) <- c("other","frequent","all")
+			matab <- rbind(matab,colSums(matab))
+			rownames(matab)[nrow(matab)] <- "all"
+			return(matab)
+		}
+
+		# make expected event table - mean of all permutations
+		realtab <- gettab(ma$test.two$dmrcalled)
+		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
+
+		permtab <- lapply(maperm,gettab)
+		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig")),])
+
+		permmeans <- apply(simplify2array(permtab), c(1,2), mean)
+		permsds <- apply(simplify2array(permtab), c(1,2), sd)
+		permcv <- permsds/permmeans
+
+		# calculate FDR by pattern and overall
+		#expected <- Reduce("+",permtab2)/nperms
+		fdrpercents <- (permmeans/realtab)*100
+
+		# Make neat summary tables
+		real.m <- reshape::melt.matrix(realtab)
+		colnames(real.m) <- c("pattern","type","value")
+		real.m$var <- "nDMRs"
+		mean.m <- reshape::melt.matrix(permmeans)
+		colnames(mean.m) <- c("pattern","type","value")
+		mean.m$var <- "permMean"
+		sd.m <- reshape::melt.matrix(permsds)
+		colnames(sd.m) <- c("pattern","type","value")
+		sd.m$var <- "permSD"
+		cv.m <- reshape::melt.matrix(permcv)
+		colnames(cv.m) <- c("pattern","type","value")
+		cv.m$var <- "permCV"
+		fdr.m <- reshape::melt.matrix(fdrpercents)
+		colnames(fdr.m) <- c("pattern","type","value")
+		fdr.m$var <- "FDRpercent"
+		longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
+		longdf$var <- factor(longdf$var,levels=unique(longdf$var))
+		fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
+		ma$perms$dmrs <- maperm
+		ma$perms$fdr <- fdr
 	}
 
 	return(ma)
@@ -146,7 +191,7 @@ filter <- function(counts, samp, poifdr)
 testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 {
 	# chunk up data to allow parallel testing for large data sets
-	chunkids <- (seq(nrow(counts))-1) %/% 100000
+	chunkids <- (seq(nrow(counts))-1) %/% 75000
 
 	# need to use the same size factors for everything
 
@@ -165,7 +210,7 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 		# estimate the dispersions for each gene
 		#message("Estimating dispersions")
-		cds <- estimateDispersions(cds,fitType="parametric",sharingMode="gene-est-only")
+		cds <- estimateDispersions(cds,fitType="local",sharingMode="gene-est-only")
 
 		# perform the testing
 		#message("Performing test")
@@ -204,6 +249,8 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	}
 	testres <- lapply(todo,dotest)
 	names(testres) <- todo
+
+	if(!all(sapply(testres,nrow)==length(bins))){stop("Ran out of memory during testing, try reducing ncore")}
 
 	# call patterns genome wide based on ab, ac, and bc test results
 	callPatterns <- function(ab,ac,bc,cutoff=0.05)
@@ -305,13 +352,20 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p, fdr.filter)
+testTwo <- function(samp,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
 {
 	message("Begin stage two testing")
 
 	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
-	recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
+	#recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
+	#colnames(recounts) <- samp$sample
+	recounts <- as.matrix(values(getCounts(samp=samp,ranges=regions,fragsize=fragsize,ncore=ncore)))
+	#gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
+	#recounts <- featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
 	colnames(recounts) <- samp$sample
+
+	#recounts <- getCounts(samp, chrs=seqlevels(regions), fragsize, regions=regions, ncore=2)
+	#recounts <- values(recounts)
 
 	# Do an ANOVA-like framework
 	# First test for ANY difference with an ANOVA-style DESeq test (ANODEV since these are GLM based negative binomial tests)
@@ -390,6 +444,7 @@ testTwo <- function(samp,regions,bsgenome,sizefactors,fragsize,anodev.p, post.p,
 	testres <- mclapply(todo,dotest,mc.cores=1)
 	names(testres) <- todo
 
+	if(!all(sapply(testres,nrow)==nrow(recounts.sig))){stop("Ran out of memory during testing, try reducing ncore")}
 
 	callPatterns2 <- function(ab,ac,bc,cutoff)
 	{

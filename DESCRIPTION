@@ -23,4 +23,6 @@ Imports:
     RColorBrewer,
     DESeq,
     GenomicAlignments,
-    Repitools
+    Repitools,
+    reshape,
+    Rsubread
