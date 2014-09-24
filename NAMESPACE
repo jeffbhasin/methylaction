@@ -2,11 +2,13 @@
 
 export(getCounts)
 export(getReads)
+export(maBed)
 export(maClustering)
 export(maCompare)
 export(maHeatmap)
 export(maSummary)
 export(maTable)
+export(maTracks)
 export(methylaction)
 export(readSampleInfo)
 import(DESeq)

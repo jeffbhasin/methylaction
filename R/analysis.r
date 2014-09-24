@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, permcl=NULL, ncore=1)
+methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -28,6 +28,8 @@ methylaction <- function(samp, counts, reads, fragsize, winsize, poifdr, stageon
 	groupcodes <- c("a","b","c")
 	names(groupcodes) <- unique(samp$group)
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
+
+	args <- list(samp=samp, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -62,8 +64,7 @@ methylaction <- function(samp, counts, reads, fragsize, winsize, poifdr, stageon
 	# Testing Stage 2 + Methylation Modelling
 	test.two <- methylaction:::testTwo(samp=samp, reads=reads, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
-	# Output results
-	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+	fdr <- NULL
 
 	if(nperms>0)
 	{
@@ -159,10 +160,23 @@ methylaction <- function(samp, counts, reads, fragsize, winsize, poifdr, stageon
 		longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
 		longdf$var <- factor(longdf$var,levels=unique(longdf$var))
 		fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
-		ma$perms$dmrs <- maperm
-		ma$perms$fdr <- fdr
+		#ma$perms$dmrs <- maperm
+		#ma$perms$fdr <- fdr
 	}
 
+	# Output results
+	#ma <- list(fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+	args$end <- Sys.time()
+	args$hours <- as.numeric(difftime(args$end,args$start,units="hours"))
+	ma <- list(dmr=test.two$dmrcalled, fdr=fdr, args=args, data=list(windows=windows, fdr.filter=fdr.filter, sizefactors=sizefactors, test.one=test.one, test.two=test.two))
+
+	# Remove some things from the output to reduce the size
+	ma$data$test.two$dmrcalled <- NULL
+	values(ma$data$windows$filtered) <- NULL
+	ma$data$windows$signal <- NULL
+	ma$data$test.two$dmrcalled <- NULL
+
+	message("Output list size in memory=",methylaction:::sizein(ma))
 	return(ma)
 }
 # --------------------------------------------------------------------
@@ -210,7 +224,7 @@ filter <- function(counts, samp, poifdr)
 testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 {
 	# chunk up data to allow parallel testing for large data sets
-	chunkids <- (seq(nrow(counts))-1) %/% 75000
+	chunkids <- (seq(nrow(counts))-1) %/% 50000
 
 	# need to use the same size factors for everything
 

@@ -3,15 +3,13 @@
 \alias{methylaction}
 \title{Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq)}
 \usage{
-methylaction(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist,
-  anodev.p, post.p, minsize = 150, nperms = 0, permcl = NULL, ncore = 1)
+methylaction(samp, counts, reads, winsize, poifdr, stageone.p, joindist,
+  anodev.p, post.p, minsize = 150, nperms = 0, ncore = 1)
 }
 \arguments{
 \item{samp}{Description of samples from readSampleInfo()}
 
 \item{counts}{Preprocessed count data from getCounts()}
-
-\item{fragsize}{The average fragment length selected for in the sequencing experiment (used to extend reads when re-counting for regions in stage two testing).}
 
 \item{winsize}{Size of the windows used when counting.}
 
@@ -28,6 +26,8 @@ methylaction(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist,
 \item{ncore}{Number of cores to use.}
 
 \item{bsgenome}{b-string genome (bsgenome) object for the genome}
+
+\item{fragsize}{The average fragment length selected for in the sequencing experiment (used to extend reads when re-counting for regions in stage two testing).}
 }
 \value{
 A list containing detailed results from each stage of the analysis.
