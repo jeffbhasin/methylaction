@@ -111,3 +111,41 @@ maCompare <- function(malist)
 
 }
 # --------------------------------------------------------------------
+
+
+maTracks <- function(ma, path="", bigwig=FALSE, chrs=NULL, bsgenome=NULL, ncore=NULL)
+{
+	if((bigwig==TRUE)&((is.null(chrs))|(is.null(bsgenome)))){stop("Must give chrs and bsgenome if bigwig=TRUE")}
+	#if(is.null(counts)){stop("Must give list of data as counts argument")}
+
+	# Make one GRanges for all bin coordinates
+	#bins.gr <- suppressWarnings(do.call(c,lapply(names(counts$bins), function(x) GRanges(x,counts$bins[[x]]))))
+
+	signal <- ma$windows$signal
+
+	writeBed <- function(x)
+	{
+		message(paste(x,": Creating BedGraph",sep=""))
+		filename <- file.path(path,paste(x,".bed",sep=""))
+		values <- values(signal)[,x]
+		bed <- data.frame(chr=seqnames(signal), start=as.integer(start(signal)-1), end=as.integer(end(signal)), value=values)
+		bed <- bed[bed$value>0,]
+		#trackheader <- paste("track","type=wiggle_0",paste("name=",x,sep=""),sep=" ")
+		#write(trackheader,file=filename)
+		write.table(bed, file=filename, append=FALSE, quote=FALSE, row.names=FALSE, col.names=FALSE, sep="\t")
+
+		if(bigwig==TRUE)
+		{
+			message(paste(x,": Converting to BigWig",sep=""))
+			cs <- tempfile(x)
+			write.table(data.frame(chrs,chrlens),col.names=F,row.names=F,file=cs, quote=F)
+			cmd <- paste("wigToBigWig",filename,cs,file.path(path,paste(x,".bw",sep="")),sep=" ")
+			message(cmd)
+			system(cmd)
+			file.remove(cs)
+		}
+	}
+	# want to print all series of data in the file expect the bin metadata
+	mclapply(samp$sample, writeBed, mc.cores=ncore)
+	NULL
+}

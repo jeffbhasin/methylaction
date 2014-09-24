@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, permcl=NULL, ncore=1)
+methylaction <- function(samp, counts, reads, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, permcl=NULL, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -60,7 +60,7 @@ methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, jo
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, reads=reads, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	# Output results
 	ma <- list(opts=list(samp=samp,fragsize=fragsize,poifdr=poifdr,stageone.p=stageone.p,joindist=joindist,winsize=winsize,anodev.p=anodev.p,post.p=post.p,minsize=minsize,ncore=ncore),fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
@@ -84,7 +84,7 @@ methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, jo
 			mysizes <- sizefactors[rand]
 
 			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=chrs,sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.two <- methylaction:::testTwo(samp=mysamp, reads=reads, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
@@ -371,14 +371,14 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
+testTwo <- function(samp,reads,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
 {
 	message("Begin stage two testing")
 
 	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
 	#recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
 	#colnames(recounts) <- samp$sample
-	recounts <- as.matrix(values(getCounts(samp=samp,ranges=regions,fragsize=fragsize,ncore=ncore)))
+	recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
 	#gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
 	#recounts <- featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
 	colnames(recounts) <- samp$sample
