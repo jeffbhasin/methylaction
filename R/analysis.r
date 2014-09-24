@@ -96,24 +96,25 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 		# Maybe have function take a cl argument, if null then just ignore and call lapply
 		# Otherwise, build a cluster off that cl object and run the perms in parallel over it
 		# Need to make sure we handle I/O to the cluster correctly, i.e. send once and then do many perms so the nJobs is always going to be some divisor of node counts?
-		if(!is.null(permcl))
-		{
+		#if(!is.null(permcl))
+		#{
 			#cl <- makeCluster(c("lri001","lri002","lri003","lri004"),type="PSOCK")
 			#parLapply(cl, 1:25, function(x) mean(rnorm(1:10e7,100,100000)))
-			message("Exporting Data to Cluster")
-			clusterCall(permcl,function(x) library(methylaction))
-			signal <- windows$signal
-			signal.norm <- windows$signal.norm
-			clusterExport(permcl,varlist=c("samp","signal","signal.norm","sizefactors"))
-			chrs <- unique(as.vector(seqnames(counts)))
-			clusterExport(permcl,varlist=c("chrs","stageone.p","joindist","minsize","ncore","fragsize","anodev.p","post.p","fdr.filter","winsize"))
-			message("Begin Perms")
-			maperm <- parLapply(permcl, 1:nperms, doperm)
+			#message("Exporting Data to Cluster")
+			#clusterCall(permcl,function(x) library(methylaction))
+			#signal <- windows$signal
+			#signal.norm <- windows$signal.norm
+			#clusterExport(permcl,varlist=c("samp","signal","signal.norm","sizefactors"))
+			#chrs <- unique(as.vector(seqnames(counts)))
+			#clusterExport(permcl,varlist=c("chrs","stageone.p","joindist","minsize","ncore","fragsize","anodev.p","post.p","fdr.filter","winsize"))
+			#message("Begin Perms")
+			#maperm <- parLapply(permcl, 1:nperms, doperm)
 			#stopCluster(cl)
-		} else
-		{
+		#} else
+		#{
+		# If trying cluster perms again, would be better to try load() to get the data on each node rather than sending over network directly
 			maperm <- lapply(1:nperms, doperm)
-		}
+		#}
 
 		# make observed event table
 		gettab <- function(dmrcalled)
