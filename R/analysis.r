@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
+methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, permcl=NULL, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -69,20 +69,22 @@ methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, jo
 	{
 		doperm <- function(perm)
 		{
-			message("Permutation numer ",perm)
+			message("Permutation number ",perm)
+			host <- system2("hostname",stdout=TRUE)
+			write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
 			rand <- sample(1:nrow(samp),nrow(samp),replace=F)
 			mysamp <- samp
 			mysamp$sample <- mysamp$sample[rand]
 			mysamp$bam <- mysamp$bam[rand]
 
-			mybins <- windows$signal
+			mybins <- signal
 			values(mybins) <- values(mybins)[,rand]
-			mysig <- windows$signal.norm
+			mysig <- signal.norm
 			values(mysig) <- values(mysig)[,rand]
 			mysizes <- sizefactors[rand]
 
-			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(counts))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=chrs,sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
@@ -93,7 +95,24 @@ methylaction <- function(samp, counts, fragsize, winsize, poifdr, stageone.p, jo
 		# Maybe have function take a cl argument, if null then just ignore and call lapply
 		# Otherwise, build a cluster off that cl object and run the perms in parallel over it
 		# Need to make sure we handle I/O to the cluster correctly, i.e. send once and then do many perms so the nJobs is always going to be some divisor of node counts?
-		maperm <- lapply(1:nperms, doperm)
+		if(!is.null(permcl))
+		{
+			#cl <- makeCluster(c("lri001","lri002","lri003","lri004"),type="PSOCK")
+			#parLapply(cl, 1:25, function(x) mean(rnorm(1:10e7,100,100000)))
+			message("Exporting Data to Cluster")
+			clusterCall(permcl,function(x) library(methylaction))
+			signal <- windows$signal
+			signal.norm <- windows$signal.norm
+			clusterExport(permcl,varlist=c("samp","signal","signal.norm","sizefactors"))
+			chrs <- unique(as.vector(seqnames(counts)))
+			clusterExport(permcl,varlist=c("chrs","stageone.p","joindist","minsize","ncore","fragsize","anodev.p","post.p","fdr.filter","winsize"))
+			message("Begin Perms")
+			maperm <- parLapply(permcl, 1:nperms, doperm)
+			#stopCluster(cl)
+		} else
+		{
+			maperm <- lapply(1:nperms, doperm)
+		}
 
 		# make observed event table
 		gettab <- function(dmrcalled)
