@@ -71,16 +71,16 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 		doperm <- function(perm)
 		{
 			message("Permutation number ",perm)
-			host <- system2("hostname",stdout=TRUE)
-			write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
+			#host <- system2("hostname",stdout=TRUE)
+			#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
 			rand <- sample(1:nrow(samp),nrow(samp),replace=F)
 			mysamp <- samp
 			mysamp$sample <- mysamp$sample[rand]
 			mysamp$bam <- mysamp$bam[rand]
 
-			mybins <- signal
+			mybins <- windows$signal
 			values(mybins) <- values(mybins)[,rand]
-			mysig <- signal.norm
+			mysig <- windows$signal.norm
 			values(mysig) <- values(mysig)[,rand]
 			mysizes <- sizefactors[rand]
 
@@ -409,7 +409,7 @@ testTwo <- function(samp,reads,regions,sizefactors,fragsize,anodev.p, post.p, fd
 	testDESeqANODEV<- function(recounts,groups,ncore)
 	{
 		# chunk up data to allow parallel testing for large data sets
-		chunkids <- (seq(nrow(recounts))-1) %/% 500
+		chunkids <- (seq(nrow(recounts))-1) %/% 250
 
 		dotest <- function(rows)
 		{
