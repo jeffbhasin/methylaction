@@ -132,6 +132,7 @@ getReads <- function(samp, bsgenome, chrs, fragsize, ncore)
 		bam.gr <- as(bam.ga, "GRanges")
 		message("Extending read length to ",fragsize)
 		bam.gr <- resize(bam.gr, fragsize)
+		seqlevels(bam.gr) <- chrs
 		return(bam.gr)
 	}
 	reads <- mclapply(samp$bam,bam2gr,mc.cores=ncore)

@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
+methylaction <- function(samp, counts, cov, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -53,21 +53,26 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 	wingr <- GRanges(seqnames(counts),IRanges(start(counts),end(counts)))
 	windows <- list()
 	windows$zero <- wingr[zero]
-	windows$filtered <- counts[!filter.pass & !zero]
+	windows$filtered <- wingr[!filter.pass & !zero]
 	windows$signal <- counts[filter.pass]
 	windows$signal.norm <- wingr[filter.pass]
 	values(windows$signal.norm) <- normcounts
 
+	rm(filter.pass, cds, normcounts, zero, wingr, counts)
+	gc()
+
 	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(counts))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, reads=reads, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, cov=cov, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 
 	if(nperms>0)
 	{
+		#maperm2 <- list()
+
 		doperm <- function(perm)
 		{
 			message("Permutation number ",perm)
@@ -85,11 +90,12 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 			mysizes <- sizefactors[rand]
 
 			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=chrs,sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, reads=reads, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.two <- methylaction:::testTwo(samp=mysamp, cov=cov, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
-
+			#maperm2[[perm]] <<- ret
+			#save(rand,file="permdump.rd",compress=T)
 			return(ret)
 		}
 		# This is the loop that does the perms, can replace this with some call to clusterLapplyLB
@@ -116,10 +122,17 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 			maperm <- lapply(1:nperms, doperm)
 		#}
 
+		# make sure the perms report missing levels so table() gives same output for everything
+		maperm <- lapply(maperm,function(x){
+			x$pattern <- factor(x$pattern,levels=unique(test.two$dmrcalled$pattern));
+			x$frequent <- factor(x$frequent,levels=unique(test.two$dmrcalled$frequent)); 
+			return(x);
+		})
+
 		# make observed event table
 		gettab <- function(dmrcalled)
 		{
-			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$sharp))
+			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
 			matab <- cbind(matab,rowSums(matab))
 			colnames(matab) <- c("other","frequent","all")
 			matab <- rbind(matab,colSums(matab))
@@ -128,7 +141,7 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 		}
 
 		# make expected event table - mean of all permutations
-		realtab <- gettab(ma$test.two$dmrcalled)
+		realtab <- gettab(test.two$dmrcalled)
 		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
 
 		permtab <- lapply(maperm,gettab)
@@ -179,6 +192,49 @@ methylaction <- function(samp, counts, reads, winsize, poifdr, stageone.p, joind
 
 	message("Output list size in memory=",methylaction:::sizein(ma))
 	return(ma)
+}
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+binnedAverage <- function(bins, numvar)
+{
+	stopifnot(is(bins, "GRanges"))
+	stopifnot(is(numvar, "RleList"))
+	stopifnot(identical(seqlevels(bins), names(numvar)))
+	bins_per_chrom <- split(ranges(bins), seqnames(bins))
+	means_list <- lapply(names(numvar),
+	function(seqname)
+	{
+		views <- Views(numvar[[seqname]],bins_per_chrom[[seqname]])
+		viewMeans(views)
+	})
+	new_mcol <- as.integer(round(unsplit(means_list, as.factor(seqnames(bins)))))
+	#mcols(bins)[[mcolname]] <- new_mcol
+	#bins
+	return(new_mcol)
+}
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+
+# Count for any GRanges object
+regionCounts <- function(cov, regions)
+{
+	ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=5)
+	ba2 <- mclapply(ba, Rle)
+	ba <- do.call(cbind,ba)
+	#ba <- round(ba,digits=0)
+	return(ba)
+}
+
+# Count in windows spanning the genome
+windowCounts <- function(reads, bsgenome, chrs, winsize)
+{
+	gb <- Repitools::genomeBlocks(genome=bsgenome, chrs=chrs, width=winsize)
+	cov <- mclapply(reads,coverage,mc.cores=ncore)
+	countmat <- regionCounts(cov=cov, regions=gb)
+	values(gb) <- countmat
+	return(gb)
 }
 # --------------------------------------------------------------------
 
@@ -386,17 +442,24 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,reads,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
+testTwo <- function(samp,cov,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
 {
 	message("Begin stage two testing")
+
+	ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=1)
+	recounts <- do.call(cbind,ba)
 
 	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
 	#recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
 	#colnames(recounts) <- samp$sample
-	recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
+	#recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
+
+	#recounts <- mclapply(cov, function(x) binnedAverage(bins=reions,numvar=x), mc.cores=ncore)
+	#recounts <- do.call(cbind,recounts)
+
 	#gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
 	#recounts <- featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
-	colnames(recounts) <- samp$sample
+	#colnames(recounts) <- samp$sample
 
 	#recounts <- getCounts(samp, chrs=seqlevels(regions), fragsize, regions=regions, ncore=2)
 	#recounts <- values(recounts)
@@ -568,7 +631,7 @@ testTwo <- function(samp,reads,regions,sizefactors,fragsize,anodev.p, post.p, fd
 	colnames(perwin.means) <- paste0(unique(samp$group),".perwin.mean")
 
 	dmrfreq <- cbind(dmr,cnt,perwin.means,meth.freq,meth.per)
-	dmrfreq$dmrid <- 1:nrow(dmr)
+	#dmrfreq$dmrid <- 1:nrow(dmr)
 
 	# Want to know sharpness - should be all 0 groups are no more than 1/3 meth, and all 1 groups are no less than 2/3 meth
 	patts <- as.character(unique(dmrfreq$pattern))
@@ -589,11 +652,12 @@ testTwo <- function(samp,reads,regions,sizefactors,fragsize,anodev.p, post.p, fd
 		sharp <- rowSums(cbind(lt[,chars=="0",drop=F],gt[,chars=="1",drop=F]))==3
 		
 		ret <- dmrfreq[dmrfreq$pattern==patt,]
-		ret$sharp <- sharp
+		ret$frequent <- sharp
 		ret
 	}
 	res <- lapply(patts,sharpness)
 	dmrcalled <- do.call(rbind,unname(res))
+	dmrcalled$dmrid <- 1:nrow(dmrcalled)
 
 	# Make means columns
 	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(recounts.sig[,i])))
