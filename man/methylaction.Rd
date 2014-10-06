@@ -3,8 +3,8 @@
 \alias{methylaction}
 \title{Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq)}
 \usage{
-methylaction(samp, counts, reads, winsize, poifdr, stageone.p, joindist,
-  anodev.p, post.p, minsize = 150, nperms = 0, ncore = 1)
+methylaction(samp, counts, winsize, poifdr, stageone.p, joindist, anodev.p,
+  post.p, minsize = 150, nperms = 0, ncore = 1)
 }
 \arguments{
 \item{samp}{Description of samples from readSampleInfo()}

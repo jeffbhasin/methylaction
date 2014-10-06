@@ -260,3 +260,46 @@ featureCountsDt <- function(files,annot.inbuilt="mm9",annot.ext=NULL,isGTFAnnota
 	z
 }
 # --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+#' Get counts using featureCounts
+#'
+#' desc
+#' @param samp Sample data.frame from readSampleInfo()
+#' @param bsgenome
+#' @param chrs
+#' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage.
+#' @return desc
+#' @export
+getCountsFc <- function(samp, bsgenome=NULL, ranges=NULL, chrs=NULL, fragsize, winsize=50, ncore=1)
+{
+	library(Rsubread)
+
+	if(is.null(bsgenome)&is.null(ranges)){stop("Need to give either bsgenome (count in genome-wide non-overlapping windows for the given genome) or ranges (count in pre-defined GenomicRanges object).")}
+	if(!is.null(bsgenome)&!is.null(ranges)){stop("Please give either bsgenome or ranges, not both.")}
+
+	# Make GRanges of non-overlapping windows accross the genome
+	if(!is.null(bsgenome))
+	{
+		message("Generating Window Positions")
+		gb <- Repitools::genomeBlocks(Hsapiens,chrs=chrs,width=winsize)
+	} else
+	{
+		gb <- ranges
+	}
+
+	# Make SAF format table of these regions
+	gdf <- data.table(data.frame(GeneID=1:length(gb),Chr=seqnames(gb),Start=start(gb),End=end(gb),Strand="+"))
+
+	# Run featureCounts (modified version to read in results with fread() from data.table to increase speed)
+	message("Counting via Rsubread")
+	fc <- methylaction:::featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, countMultiMappingReads=T, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=20)
+	#fc <- Rsubread::featureCounts(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=20)
+
+	# Build GRanges object to return so counts are never separated from their coordinates
+	message("Building counts GRanges")
+	counts <- fc$counts
+	colnames(counts) <- samp$sample
+	values(gb) <- counts
+	return(gb)
+}
