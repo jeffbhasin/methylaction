@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -29,7 +29,7 @@ methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, an
 	names(groupcodes) <- unique(samp$group)
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
 
-	args <- list(samp=samp, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -65,7 +65,7 @@ methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, an
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 
@@ -89,8 +89,21 @@ methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, an
 			values(mysig) <- values(mysig)[,rand]
 			mysizes <- sizefactors[rand]
 
+			# need to check for and randomize cov/reads here too
+			mycov <- NULL
+			myreads <- NULL
+			if(stagetwo.method=="co")
+			{
+				# shuffle reads
+				myreads <- reads[rand]
+			} else if(stagetwo.method=="ac")
+			{
+				# shuffle cov
+				mycov <- cov[rand]
+			}
+
 			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=chrs,sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
@@ -98,34 +111,12 @@ methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, an
 			#save(rand,file="permdump.rd",compress=T)
 			return(ret)
 		}
-		# This is the loop that does the perms, can replace this with some call to clusterLapplyLB
-		# Maybe have function take a cl argument, if null then just ignore and call lapply
-		# Otherwise, build a cluster off that cl object and run the perms in parallel over it
-		# Need to make sure we handle I/O to the cluster correctly, i.e. send once and then do many perms so the nJobs is always going to be some divisor of node counts?
-		#if(!is.null(permcl))
-		#{
-			#cl <- makeCluster(c("lri001","lri002","lri003","lri004"),type="PSOCK")
-			#parLapply(cl, 1:25, function(x) mean(rnorm(1:10e7,100,100000)))
-			#message("Exporting Data to Cluster")
-			#clusterCall(permcl,function(x) library(methylaction))
-			#signal <- windows$signal
-			#signal.norm <- windows$signal.norm
-			#clusterExport(permcl,varlist=c("samp","signal","signal.norm","sizefactors"))
-			#chrs <- unique(as.vector(seqnames(counts)))
-			#clusterExport(permcl,varlist=c("chrs","stageone.p","joindist","minsize","ncore","fragsize","anodev.p","post.p","fdr.filter","winsize"))
-			#message("Begin Perms")
-			#maperm <- parLapply(permcl, 1:nperms, doperm)
-			#stopCluster(cl)
-		#} else
-		#{
-		# If trying cluster perms again, would be better to try load() to get the data on each node rather than sending over network directly
-			maperm <- lapply(1:nperms, doperm)
-		#}
+		maperm <- lapply(1:nperms, doperm)
 
 		# make sure the perms report missing levels so table() gives same output for everything
 		maperm <- lapply(maperm,function(x){
-			x$pattern <- factor(x$pattern,levels=unique(test.two$dmrcalled$pattern));
-			x$frequent <- factor(x$frequent,levels=unique(test.two$dmrcalled$frequent)); 
+			x$pattern <- factor(x$pattern,levels=levels(test.two$dmrcalled$pattern));
+			x$frequent <- factor(x$frequent,levels=levels(test.two$dmrcalled$frequent)); 
 			return(x);
 		})
 
@@ -147,9 +138,16 @@ methylaction <- function(samp, counts, winsize, poifdr, stageone.p, joindist, an
 		permtab <- lapply(maperm,gettab)
 		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig")),])
 
+		# Need to make sure they are ordered right before doing the division
+		permtab <- lapply(permtab,function(x) x[rownames(realtab),])
+
 		permmeans <- apply(simplify2array(permtab), c(1,2), mean)
+		permmeans <- permmeans[rownames(realtab),]
 		permsds <- apply(simplify2array(permtab), c(1,2), sd)
+		permsds <- permsds[rownames(realtab),]
 		permcv <- permsds/permmeans
+		permcv <- permcv[rownames(realtab),]
+
 
 		# calculate FDR by pattern and overall
 		#expected <- Reduce("+",permtab2)/nperms
@@ -442,33 +440,28 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,cov,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
+testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,anodev.p, post.p, fdr.filter, ncore)
 {
 	message("Begin stage two testing")
 
-	message("Recounting in regions")
-	#ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=1)
-	#recounts <- do.call(cbind,ba)
+	message("Recounting in regions with method=",stagetwo.method)
 
-	# Idea is to use average coverage for stage one to reduce inflation by double counting, and use absolute counts after we've joined to regions
-
-	# Going back to Rsubread counts to have speed and stability under the permutations
-
-
-	# Recount from BAMs inside these regions (try something like easyRNAseq - see DESeq vingette)
-	#recounts <- suppressWarnings(Repitools::annotationCounts(x=samp$bam,anno=regions,seq.len=fragsize,up=0,down=0))
-	#colnames(recounts) <- samp$sample
-	#recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
-
-	#recounts <- mclapply(cov, function(x) binnedAverage(bins=reions,numvar=x), mc.cores=ncore)
-	#recounts <- do.call(cbind,recounts)
-	#library(Rsubread)
-	gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
-	recounts <- methylaction:::featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
-	colnames(recounts) <- samp$sample
-
-	#recounts <- getCounts(samp, chrs=seqlevels(regions), fragsize, regions=regions, ncore=2)
-	#recounts <- values(recounts)
+	if(stagetwo.method=="co")
+	{
+		recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
+	} else if(stagetwo.method=="fc")
+	{
+		gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
+		recounts <- methylaction:::featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
+		colnames(recounts) <- samp$sample
+	} else if(stagetwo.method=="ac")
+	{
+		ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=1)
+		recounts <- do.call(cbind,ba)
+	} else
+	{
+		stop("Bad stagetwo.method type")
+	}
 
 	# Do an ANOVA-like framework
 	# First test for ANY difference with an ANOVA-style DESeq test (ANODEV since these are GLM based negative binomial tests)
