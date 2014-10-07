@@ -102,7 +102,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 				mycov <- cov[rand]
 			}
 
-			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=chrs,sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 			test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
@@ -396,7 +396,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	# Make means columns
 	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
 	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(as.matrix(values(signal.norm[,i])))))
-	colnames(counts.means) <- paste0(unique(samp$group),".mean")
+	colnames(counts.means) <- paste0(levels(samp$group),".mean")
 
 	# Combine so we get these in the output
 	patt <- data.table(counts.means,patt)
@@ -627,7 +627,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 	# Make means columns - for the per window counts
 	perwin.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(cnt[,i])))
-	colnames(perwin.means) <- paste0(unique(samp$group),".perwin.mean")
+	colnames(perwin.means) <- paste0(levels(samp$group),".perwin.mean")
 
 	dmrfreq <- cbind(dmr,cnt,perwin.means,meth.freq,meth.per)
 	#dmrfreq$dmrid <- 1:nrow(dmr)
