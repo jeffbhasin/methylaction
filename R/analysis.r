@@ -116,7 +116,6 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 		# make sure the perms report missing levels so table() gives same output for everything
 		maperm <- lapply(maperm,function(x){
 			x$pattern <- factor(x$pattern,levels=levels(test.two$dmrcalled$pattern));
-			x$frequent <- factor(x$frequent,levels=levels(test.two$dmrcalled$frequent)); 
 			return(x);
 		})
 
