@@ -111,7 +111,28 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			#save(rand,file="permdump.rd",compress=T)
 			return(ret)
 		}
-		maperm <- lapply(1:nperms, doperm)
+
+		deathproof <- function(x)
+		{
+			ret <- tryCatch(
+				doperm(x),
+				error = function(e) 
+				{
+						message("Permutation ",x," had error: ",e$message)
+						character()
+				}
+			)
+			return(ret)
+		}
+
+		maperm <- lapply(1:nperms, deathproof)
+
+		checkdead <- sapply(maperm,class)
+		dead <- checkdead != "GRanges"
+		message("Out of ",nperms," perms, ",sum(dead)," died and were ignored")
+		maperm <- maperm[!dead]
+
+		args$permerrors <- sum(dead)
 
 		# make sure the perms report missing levels so table() gives same output for everything
 		maperm <- lapply(maperm,function(x){
