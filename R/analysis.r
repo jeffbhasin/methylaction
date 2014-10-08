@@ -102,8 +102,8 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 				mycov <- cov[rand]
 			}
 
-			test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.one <- testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+			test.two <- testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
