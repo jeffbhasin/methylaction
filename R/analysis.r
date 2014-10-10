@@ -195,13 +195,20 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 		fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
 		#ma$perms$dmrs <- maperm
 		#ma$perms$fdr <- fdr
+
+		# Remove count columns from maperm to save space and not duplicate this data
+   		#maperm2 <- lapply(maperm,function(x){
+			#values(x) <- as.data.frame(values(x))[,!(colnames(values(x)) %in% samp$sample)]
+			#return(x);
+		#})
+
 	}
 
 	# Output results
 	#ma <- list(fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
 	args$end <- Sys.time()
 	args$hours <- as.numeric(difftime(args$end,args$start,units="hours"))
-	ma <- list(dmr=test.two$dmrcalled, fdr=fdr, args=args, data=list(windows=windows, fdr.filter=fdr.filter, sizefactors=sizefactors, test.one=test.one, test.two=test.two))
+	ma <- list(dmr=test.two$dmrcalled, fdr=fdr, args=args, data=list(windows=windows, fdr.filter=fdr.filter, sizefactors=sizefactors, test.one=test.one, test.two=test.two, maperm=maperm))
 
 	# Remove some things from the output to reduce the size
 	ma$data$test.two$dmrcalled <- NULL
