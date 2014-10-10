@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, minsize=150, nperms=0, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -28,8 +28,9 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	groupcodes <- c("a","b","c")
 	names(groupcodes) <- unique(samp$group)
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
+	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
-	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -65,7 +66,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 
@@ -103,7 +104,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			}
 
 			test.one <- testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, fdr.filter=fdr.filter,ncore=ncore)
+			test.two <- testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
@@ -460,7 +461,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,winsize,anodev.p, post.p, fdr.filter, ncore)
+testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,winsize,anodev.p,adjust.var,post.p, fdr.filter, ncore)
 {
 	message("Begin stage two testing")
 
@@ -488,7 +489,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	# Adjust this for multiple testing
 	# Move on the significant windows to post testing, adjust within each test only then
 	# Call pattern based on these values
-	testDESeqANODEV<- function(recounts,groups,ncore)
+	testDESeqANODEV<- function(recounts,groups,covar, ncore)
 	{
 		# chunk up data to allow parallel testing for large data sets
 		chunkids <- (seq(nrow(recounts))-1) %/% 250
@@ -512,22 +513,47 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 			# perform the testing
 			# compare model w/ factor versus null model
-			message("Fitting full GLM")
-			resFull <- fitNbinomGLMs( cds, modelFormula=count~groups)
-			message("Fitting reduced GLM")
-			resReduced <- fitNbinomGLMs( cds, modelFormula=count~1)
-			message("Performing test")
-			res <- nbinomGLMTest(resFull, resReduced)
-			return(res)
+			if(!is.null(covar))
+			{
+				message("Fitting full GLM w/ adjustments")
+				resFull <- fitNbinomGLMs( cds, modelFormula=count~groups+covar)
+				message("Fitting reduced GLM w/ adjustments")
+				resReduced <- fitNbinomGLMs( cds, modelFormula=count~covar)
+				message("Performing test")
+				res <- nbinomGLMTest(resFull, resReduced)
+				return(res)
+		
+			} else {
+				message("Fitting full GLM")
+				resFull <- fitNbinomGLMs( cds, modelFormula=count~groups)
+				message("Fitting reduced GLM")
+				resReduced <- fitNbinomGLMs( cds, modelFormula=count~1)
+				message("Performing test")
+				res <- nbinomGLMTest(resFull, resReduced)
+				return(res)
+			}
 		}
 		finalres <- mclapply(0:max(chunkids),function(x) {message("Testing chunk ",x," of ",max(chunkids));dotest(chunkids==x);},mc.cores=ncore)
 		finalres <- do.call(c,finalres)
 		return(finalres)
 	}
-	anodev <- testDESeqANODEV(recounts=recounts,groups=samp$group,ncore=ncore)
+
+	if(is.null(adjust.var))
+	{
+		covar <- NULL
+	} else {
+			message("Adding adjustment for variable \"", adjust.var,"\" into the GLM")
+			covar <- factor(as.data.frame(samp)[,adjust.var,drop=T])
+	}
+	
+
+	anodev <- testDESeqANODEV(recounts=recounts,groups=samp$group,covar=covar,ncore=ncore)
 	anodev.padj <- p.adjust(anodev,method="fdr")
 	#table(anodev<0.1)
 	# Filter out if it does not pass the ANODEV
+
+	#df <- data.frame(noadj=p.adjust(anodev1,method="fdr")<0.001,adj=p.adjust(anodev,method="fdr")<0.001)
+	#table(rowSums(df))
 
 	regions$anodev.p <- anodev
 	regions$anodev.padj <- anodev.padj
