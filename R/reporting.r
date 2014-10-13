@@ -161,6 +161,8 @@ maTable <- function(ma,recut.p=NULL)
 	{
 		gettab <- function(dmrcalled)
 		{
+			dmrcalled <- dmrcalled[dmrcalled$anodev.padj<recut.p]
+			dmrcalled$frequent <- factor(dmrcalled$frequent,levels=c(FALSE,TRUE))
 			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
 			matab <- cbind(matab,rowSums(matab))
 			colnames(matab) <- c("other","frequent","all")
@@ -173,7 +175,10 @@ maTable <- function(ma,recut.p=NULL)
 		realtab <- gettab(ma$dmr)
 		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
 
-		permtab <- lapply(ma$data$maperm,gettab)
+		permtab <- lapply(1:length(ma$data$maperm),function(x){
+			#message(x);
+			gettab(ma$data$maperm[[x]]);
+		})
 		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig")),])
 
 		# Need to make sure they are ordered right before doing the division
@@ -218,22 +223,24 @@ maTable <- function(ma,recut.p=NULL)
 			tab <- ma$fdr
 	}
 
-	tab <- tab[tab$type %in% c("frequent","other"),c("pattern","type","nDMRs","FDRpercent")]
-	tab <- tab[tab$pattern!="all",]
+	#tab <- tab[tab$type %in% c("frequent","other"),c("pattern","type","nDMRs","FDRpercent")]
+	#tab <- tab[tab$pattern!="all",]
 
-	c1 <- cast(tab,formula=pattern~type,value="nDMRs")
-	c2 <- cast(tab,formula=pattern~type,value="FDRpercent")
-	stopifnot(c1$pattern==c2$pattern)
+	#c1 <- cast(tab,formula=pattern~type,value="nDMRs")
+	#c2 <- cast(tab,formula=pattern~type,value="FDRpercent")
+	#stopifnot(c1$pattern==c2$pattern)
 
-	df <- data.frame(frequent_dmrs=c1$frequent,frequent_fdr=c2$frequent,other_dmrs=c1$other,other_fdr=c2$other)
+	#df <- data.frame(frequent_dmrs=c1$frequent,frequent_fdr=c2$frequent,other_dmrs=c1$other,other_fdr=c2$other)
 
-	abc <- do.call(rbind,str_split(c1$pattern,""))[,-1]
-	colnames(abc) <- c("a","b","c")
+	#abc <- do.call(rbind,str_split(c1$pattern,""))[,-1]
+	#colnames(abc) <- c("a","b","c")
 
-	df <- cbind(pattern=c1$pattern,abc,df)
-	df$pattern <- factor(df$pattern,levels=c("001","110","011","100","010","101"))
-	out <- df[order(df$pattern),]
-	return(out)
+	#df <- cbind(pattern=c1$pattern,abc,df)
+	#df$pattern <- factor(df$pattern,levels=c("001","110","011","100","010","101"))
+	#out <- df[order(df$pattern),]
+	#return(out)
+
+	return(tab)
 }
 # --------------------------------------------------------------------
 
