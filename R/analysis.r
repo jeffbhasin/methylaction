@@ -91,13 +91,21 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			values(mysig) <- values(mysig)[,rand]
 			mysizes <- sizefactors[rand]
 
+			# rename samples so there are no identical names in the bootstrap case
+			mysamp$sample <- paste0("BS",1:nrow(samp),mysamp$sample)
+			names(mysizes) <- mysamp$sample
+			colnames(values(mybins)) <- mysamp$sample
+			colnames(values(mysig)) <- mysamp$sample
+
 			# need to check for and randomize cov/reads here too
 			mycov <- NULL
 			myreads <- NULL
+			
 			if(stagetwo.method=="co")
 			{
 				# shuffle reads
 				myreads <- reads[rand]
+				names(myreads) <- mysamp$sample
 			} else if(stagetwo.method=="ac")
 			{
 				# shuffle cov
