@@ -69,6 +69,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
+	maperm <- NULL
 
 	if(nperms>0)
 	{
