@@ -62,9 +62,67 @@ maSummary <- function(ma)
 #' @param pdf PDF file to output.
 #' @return Saves plot to disk.
 #' @export
-maHeatmap <- function(samp,ma,pdf)
+maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 {
+	sites <- ma$dmr
 
+	# Restrict to frequent only if requested
+	if(frequentonly==TRUE)
+	{
+		sites <- sites[sites$frequent==TRUE]
+	}
+
+	# Extract counts matrix
+	mat <- as.matrix(values(sites))
+	samp <- ma$args$samp
+	mat <- mat[,colnames(mat) %in% samp$sample]
+	stopifnot(colnames(mat)==samp$sample)
+
+	# Set scale inflection point based on POI cutoffs
+	inflect <- sqrt(mean(ma$data$fdr.filter$cuts))
+
+	# Get upper bound for saturation
+	#upper <- sqrt(round(quantile(mat,0.9999),0))
+	upper <- sqrt(max(mat))
+
+	# Adjust by size
+	#mat <- sqrt(mat/(width(sharpsites)/winsize))
+
+	# set saturation point (hard in matrix)
+	#mat[mat>upper] <- upper
+
+	# Generate colors
+	ncolors <- 100
+	per <- round((inflect/upper)*100,0)/100
+	pal1size <- round(per*ncolors)
+	#pal1 <- colorRampPalette(c("#fff5f0","#fff5f0","#fff5f0","#fee0d2","#fc9272","#fb6a4a","#ef3b2c"),bias=1)(pal1size)
+	#pal2 <- colorRampPalette(c("#ef3b2c","#cb181d","#a50f15","#67000d"),bias=1)(ncolors-pal1size)
+	#pal1 <- colorRampPalette(c("#313695","#fee090","#f46d43"),bias=1)(pal1size)
+	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
+	#pal1 <- colorRampPalette(c("#313695","#74add1","#fee090","#f46d43"),bias=1)(pal1size)
+	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
+	pal1 <- colorRampPalette(rev(c("#313695","#4575b4","#fee090")),bias=2)(pal1size)
+	pal2 <- colorRampPalette(c("#fee090","#f46d43","#d73027","#a50026"),bias=2)(ncolors-pal1size)
+	cols <- c(rev(pal1),pal2)
+
+	# Do sorting
+	#ord <- order(ma$test.two$dmr$pattern)
+	#cnt <- cnt[ord,]
+	fac <- factor(sites$pattern,levels=c("001","110","011","100","010","101"))
+	cnt <- mat[order(fac,sites$anodev.padj),]
+
+	# Do transformations
+	cnt <- sqrt(cnt/ma$args$winsize)
+
+	# Do plotting
+	#pdf(file=pdf,width=8,height=10.5)
+	png(filename=file,width=2550,height=3300,res=300)
+	sc <- c(benign="#4daf4a",low="#377eb8",high="#e41a1c")
+	csc <- sc[match(samp$group,names(sc))]
+	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,sepwidth=c(0.15,0),colsep=c(7,7+6))
+	dev.off()
+
+	message("Plot saved to ",file)
 }
 # --------------------------------------------------------------------
 
@@ -93,9 +151,89 @@ maClustering <- function(samp,ma,mincv,type,pdf)
 #' @param ma Output object from methylaction()
 #' @return A data.frame with the summary statistics.
 #' @export
-maTable <- function(samp, ma)
+maTable <- function(ma,recut.p=NULL)
 {
+	library(reshape)
 
+	# Add code to recompute FDR here for different ANODEV.P cutoffs
+	# make observed event table
+	if(!is.null(recut.p))
+	{
+		gettab <- function(dmrcalled)
+		{
+			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
+			matab <- cbind(matab,rowSums(matab))
+			colnames(matab) <- c("other","frequent","all")
+			matab <- rbind(matab,colSums(matab))
+			rownames(matab)[nrow(matab)] <- "all"
+			return(matab)
+		}
+
+		# make expected event table - mean of all permutations
+		realtab <- gettab(ma$dmr)
+		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
+
+		permtab <- lapply(ma$data$maperm,gettab)
+		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig")),])
+
+		# Need to make sure they are ordered right before doing the division
+		permtab <- lapply(permtab,function(x) x[rownames(realtab),])
+
+		permmeans <- apply(simplify2array(permtab), c(1,2), mean)
+		permmeans <- permmeans[rownames(realtab),]
+		permsds <- apply(simplify2array(permtab), c(1,2), sd)
+		permsds <- permsds[rownames(realtab),]
+		permcv <- permsds/permmeans
+		permcv <- permcv[rownames(realtab),]
+
+
+		# calculate FDR by pattern and overall
+		#expected <- Reduce("+",permtab2)/nperms
+		fdrpercents <- (permmeans/realtab)*100
+
+		# Make neat summary tables
+		real.m <- reshape::melt.matrix(realtab)
+		colnames(real.m) <- c("pattern","type","value")
+		real.m$var <- "nDMRs"
+		mean.m <- reshape::melt.matrix(permmeans)
+		colnames(mean.m) <- c("pattern","type","value")
+		mean.m$var <- "permMean"
+		sd.m <- reshape::melt.matrix(permsds)
+		colnames(sd.m) <- c("pattern","type","value")
+		sd.m$var <- "permSD"
+		cv.m <- reshape::melt.matrix(permcv)
+		colnames(cv.m) <- c("pattern","type","value")
+		cv.m$var <- "permCV"
+		fdr.m <- reshape::melt.matrix(fdrpercents)
+		colnames(fdr.m) <- c("pattern","type","value")
+		fdr.m$var <- "FDRpercent"
+		longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
+		longdf$var <- factor(longdf$var,levels=unique(longdf$var))
+		fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
+		#ma$perms$dmrs <- maperm
+		#ma$perms$fdr <- fdr
+		tab <- fdr
+	} else
+	{
+			tab <- ma$fdr
+	}
+
+	tab <- tab[tab$type %in% c("frequent","other"),c("pattern","type","nDMRs","FDRpercent")]
+	tab <- tab[tab$pattern!="all",]
+
+	c1 <- cast(tab,formula=pattern~type,value="nDMRs")
+	c2 <- cast(tab,formula=pattern~type,value="FDRpercent")
+	stopifnot(c1$pattern==c2$pattern)
+
+	df <- data.frame(frequent_dmrs=c1$frequent,frequent_fdr=c2$frequent,other_dmrs=c1$other,other_fdr=c2$other)
+
+	abc <- do.call(rbind,str_split(c1$pattern,""))[,-1]
+	colnames(abc) <- c("a","b","c")
+
+	df <- cbind(pattern=c1$pattern,abc,df)
+	df$pattern <- factor(df$pattern,levels=c("001","110","011","100","010","101"))
+	out <- df[order(df$pattern),]
+	return(out)
 }
 # --------------------------------------------------------------------
 
