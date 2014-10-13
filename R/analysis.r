@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -30,7 +30,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
 	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
-	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot , ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -80,7 +80,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			message("Permutation number ",perm)
 			#host <- system2("hostname",stdout=TRUE)
 			#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
-			rand <- sample(1:nrow(samp),nrow(samp),replace=F)
+			rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
 			mysamp <- samp
 			mysamp$sample <- mysamp$sample[rand]
 			mysamp$bam <- mysamp$bam[rand]
