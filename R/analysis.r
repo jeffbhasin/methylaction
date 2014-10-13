@@ -82,9 +82,12 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
 			rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
 			mysamp <- samp
-			mysamp$sample <- mysamp$sample[rand]
-			mysamp$bam <- mysamp$bam[rand]
-			mysamp$ancestry <- mysamp$ancestry[rand]
+			mysamp$sample <- samp$sample[rand]
+			mysamp$bam <- samp$bam[rand]
+			if(!is.null(adjust.var))
+			{
+				mysamp[[adjust.var]] <- samp[[adjust.var]][rand]
+			}
 
 			mybins <- windows$signal
 			values(mybins) <- values(mybins)[,rand]
