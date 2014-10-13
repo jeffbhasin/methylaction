@@ -84,6 +84,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			mysamp <- samp
 			mysamp$sample <- mysamp$sample[rand]
 			mysamp$bam <- mysamp$bam[rand]
+			mysamp$ancestry <- mysamp$ancestry[rand]
 
 			mybins <- windows$signal
 			values(mybins) <- values(mybins)[,rand]
