@@ -398,7 +398,7 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 		# estimate the dispersions for each gene
 		#message("Estimating dispersions")
-		cds <- estimateDispersions(cds,fitType="local",sharingMode="gene-est-only")
+		cds <- suppressWarnings(estimateDispersions(cds,fitType="local",sharingMode="gene-est-only"))
 
 		# perform the testing
 		#message("Performing test")
@@ -588,7 +588,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 			# estimate the dispersions for each gene
 			message("Estimating dispersions")
-			cds <- estimateDispersions(cds,fitType="local",sharingMode="gene-est-only")
+			cds <- suppressWarnings(estimateDispersions(cds,fitType="local",sharingMode="gene-est-only"))
 
 			# perform the testing
 			# compare model w/ factor versus null model
