@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, perm.combo=F, ncore=1)
 {
 	# Assign groups from samp to a, b, c
 	# Validate that we have 3 groups and each is replicated
@@ -30,7 +30,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
 	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
-	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot , ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, perm.combo=perm.combo, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -80,7 +80,16 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 			message("Permutation number ",perm)
 			#host <- system2("hostname",stdout=TRUE)
 			#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
-			rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
+
+			if(perm.combo==TRUE)
+			{
+				message("Drawing permutation order from combination space")
+				ss <- as.vector(table(samp$groupcode))
+				rand <- getComboSpacePerms(an=ss[1],bn=ss[2],cn=ss[3],nperms=1,ncore=ncore)[[1]]
+			} else {
+				rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
+			}
+			
 			mysamp <- samp
 			mysamp$sample <- samp$sample[rand]
 			mysamp$bam <- samp$bam[rand]
@@ -231,6 +240,56 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 
 	message("Output list size in memory=",methylaction:::sizein(ma))
 	return(ma)
+}
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# Draws permtuation orders out of combination space by running a series of chooses
+# This may be preferable to simply shuffling the sample label list because it ensures each permtation ends up with distinct configurations of groups
+# a: size of group 1
+# b: size of group 2
+# c: size of group 3
+# nperms: how many permutations to provide
+getComboSpacePerms <- function(an,bn,cn,nperms,ncore=1)
+{
+	nn <- an+bn+cn
+	totalperms <- choose(nn,an)*choose(nn-an,bn)
+	#message("There are ",formatC(totalperms,format="d",big.mark=",")," total possible combinations")
+	samples <- 1:nn
+
+	# Generate all possible ways to draw the first group
+	co1 <- gtools::combinations(n=nn,r=an,v=samples)
+
+	# Want to pick one at random, then pick one of the next possible choices at random up to the number of permtuations
+	rand <- sample(1:nrow(co1),nperms,replace=F)
+
+	dorow <- function(x)
+	{
+		#message(x)
+		# Get one draw of the first round
+		a <- co1[x,]
+
+		# Get everything that's left after the first draw
+		nota <- samples[!(samples %in% a)]
+
+		# Get all combos for the second draw
+		b <- gtools::combinations(n=22-7,r=6,v=nota)
+
+		# Get the remainder for group 3
+		c <- t(apply(b,1,function(x) samples[!(samples %in% a) & !(samples %in% x)]))
+
+		# Build Output table
+		tab <- cbind(t(replicate(nrow(b),a)),b,c)
+		colnames(tab) <- c(rep("a",7),rep("b",6),rep("c",9))
+
+		# Report one at random
+		ret <- tab[sample(1:nrow(tab),1),]
+		return(ret)
+	}
+	permcos <- mclapply(rand,dorow,mc.cores=ncore)
+	#out <- do.call(rbind,permcos)
+	#return(out)
+	return(permcos)
 }
 # --------------------------------------------------------------------
 
