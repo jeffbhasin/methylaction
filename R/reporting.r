@@ -151,7 +151,7 @@ maClustering <- function(samp,ma,mincv,type,pdf)
 #' @param ma Output object from methylaction()
 #' @return A data.frame with the summary statistics.
 #' @export
-maTable <- function(ma,recut.p=NULL)
+maTable <- function(ma,recut.p=NULL,use.perms=NULL)
 {
 	library(reshape)
 
@@ -175,7 +175,16 @@ maTable <- function(ma,recut.p=NULL)
 		realtab <- gettab(ma$dmr)
 		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
 
-		permtab <- lapply(1:length(ma$data$maperm),function(x){
+		# Do we only want to do for a subset of perms?
+		if(is.null(use.perms))
+		{
+			touse <- length(ma$data$maperm)
+		} else {
+			touse <- use.perms
+			if(use.perms>length(ma$data$maperm)){stop("Asked to use more perms than are present in ma object")}
+		}
+
+		permtab <- lapply(1:touse,function(x){
 			#message(x);
 			gettab(ma$data$maperm[[x]]);
 		})
