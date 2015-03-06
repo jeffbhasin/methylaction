@@ -1,7 +1,7 @@
-Package: methylaction
+Package: methylaction2
 Maintainer: Jeffrey Bhasin <jeffb@case.edu>
 Author: Jeffrey Bhasin <jeffb@case.edu>
-Version: 0.1
+Version: 2.0
 License: GPL-3
 Title: methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated
     Genome Sequencing (MiGS/MBD-seq)
