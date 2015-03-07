@@ -19,21 +19,17 @@
 #' @export
 methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, perm.combo=F, ncore=1)
 {
-	# Assign groups from samp to a, b, c
-	# Validate that we have 3 groups and each is replicated
 	ngroups <- length(unique(samp$group))
-	if(ngroups!=3){stop("samp must contain 3 groups - detected ",ngroups)}
+	message("Starting analysis for a ",ngroups," group comparision")
 	samp <- data.table(samp)
-	if(sum(samp[,length(sample),by=group]$V1 > 1)!=3){stop("Each group must contain more than one replicate")}
-	groupcodes <- c("a","b","c")
-	names(groupcodes) <- unique(samp$group)
-	samp$groupcode <- groupcodes[match(samp$group,names(groupcodes))]
+	if(sum(samp[,length(sample),by=group]$V1 > 1)!=ngroups){stop("Each group must contain more than one replicate")}
+	groups <- unique(samp$group)
 	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
 	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, perm.combo=perm.combo, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
-	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
+	fdr.filter <- methylaction2:::filter(counts, samp, poifdr)
 
 	# Get Signal Bins Only
 	message("Filtering to Signal Windows")
@@ -63,10 +59,10 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 	gc()
 
 	# Testing Stage 1
-	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	test.one <- methylaction2:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction2:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 	maperm <- NULL
@@ -416,6 +412,189 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 }
 # --------------------------------------------------------------------
 
+# Function to generate all pairwise comparisions for a set of groups
+# Where groups is a vector of group IDs (unique)
+getGroupComps <- function(groups)
+{
+	ngroups <- length(groups)
+	combos <- t(combn(1:ngroups,m=2))
+	combos <- t(apply(combos,1,function(x) groups[x]))
+	combostrings <- apply(combos,1,function(x) paste0(x[1],"_vs_",x[2]))
+	return(list(combos=combos,strings=combostrings))
+}
+# Function to generate all possible pattern codes given nGroups
+getGroupPatterns <- function(ngroups)
+{
+	ones <- 0:ngroups
+
+	# Function to return all combinations for a given number of "1" digits in the pattern
+	# We will apply over all possible numbers of "1" digits to get all the pattern codes
+	digits <- function(x)
+	{
+		if(x==0)
+		{
+			return(rep(0,ngroups))
+		} else if (x==ngroups)
+		{
+			return(rep(1,ngroups))
+		} else
+		{
+			pool <- c(rep(0,ngroups-x),rep(1,x))
+			perms <- gtools::permutations(n=ngroups,r=ngroups,v=pool,set=FALSE)
+			perms <- unique(perms)
+			return(perms)
+		}
+	}
+	codes <- lapply(ones,digits)
+	codes <- do.call(rbind,codes)
+	return(codes)
+}
+
+# Decision table
+getDecisionTable <- function(mygroups,human=FALSE)
+{
+	codes <- getGroupPatterns(length(mygroups))
+
+	getRule <- function(x)
+	{
+		#message(x)
+		#x <- codes[2,]
+		combos <- t(combn(1:length(mygroups),m=2))
+		namecombos <- t(apply(combos,1,function(y) mygroups[y]))
+		combos <- t(apply(combos,1,function(y) x[y]))
+		namecombos <- apply(namecombos,1,function(x) paste0(x[1],"_vs_",x[2]))
+
+		test <- function(z)
+		{
+			if((z[1]==0)&(z[2]==0))
+			{
+				if(human==TRUE)
+				{
+					return("NS")
+				} else
+				{
+					return(0)
+				}
+			} else if((z[1]==1)&(z[2]==0))
+			{
+				if(human==TRUE)
+				{
+					return("SIG decrease")
+				} else
+				{
+					return(-1)
+				}
+			} else if((z[1]==0)&(z[2]==1))
+			{
+				if(human==TRUE)
+				{
+					return("SIG increase")
+				} else
+				{
+					return(1)
+				}
+			} else if((z[1]==1)&(z[2]==1))
+			{
+				if(human==TRUE)
+				{
+					return("NS")
+				} else
+				{
+					return(0)
+				}
+			}
+		}
+		rule <- apply(combos,1,test)
+		names(rule) <- namecombos
+		rule <- matrix(rule,nrow=1)
+		colnames(rule) <- namecombos
+		rule <- data.frame(pattern=paste(x,collapse=""),rule)
+		return(rule)
+	}
+	codes.split <- split(codes,row(codes))
+	ja <- lapply(codes.split,getRule)
+	ja <- do.call(rbind,ja)
+	return(ja)
+}
+	# call patterns genome wide based on ab, ac, and bc test results
+	callPatternsN <- function(res,cutoff=0.05)
+	{
+		# add directions to testres
+		getDirection <- function(x)
+		{
+			x$direction <- 0
+			x[baseMeanA<baseMeanB,]$direction <- 1
+			x[x$baseMeanA>x$baseMeanB,]$direction <- -1
+			return(x)
+		}
+		res <- lapply(res,getDirection)
+
+		# combine columns accross comparisons
+		getCols <- function(x)
+		{
+			out <- data.table(p=x$pval,l2fc=x$log2FoldChange,sig=x$pval<cutoff,dir=x$direction)
+			out[is.na(p),sig:=FALSE]
+			return(out)
+		}
+		tests <- lapply(res,getCols)
+
+		# filter using decision codes:
+		# -1 = sig down
+		# 0 = NS
+		# 1 = sig up
+
+		getCodes <- function(x)
+		{
+			x[,code:=dir]
+			x[sig==FALSE,code:=0]
+			return(x)
+		}
+		tests <- lapply(tests,getCodes)
+
+		# Call pattern codes based on the decision codes
+		dc <- methylaction2:::getDecisionTable(unique(samp$group))
+
+		# Trying to make this very easy - we just make the decision codes into strings, then all we have to do is match these strings with the decision table and get the pattern as a table lookup
+		# These strings will be ordered the same as comparisions are ordered when returned by the get comps function
+		str <- lapply(tests,function(x) x$code)
+		str <- do.call(cbind,str)
+		#str <- data.table(str)
+		#str$id <- 1:nrow(str)
+		#str <- str[,list(toString(.SD)),by=id]$V1
+		# This is a potential bottleneck
+		# The alternative would be to iterate over the rows of dc, check each against all of str (as  matrix), assign patterns that way
+		#str <- apply(str,1,toString)
+		# Now make the DecTable into codestrings
+		#decide <- data.frame(pattern=dc$pattern,codestring=apply(dc[,-1,drop=F],1,toString))
+
+		tests <- lapply(names(tests),function(x) setnames(tests[[x]],paste0(x,"_",colnames(tests[[x]]))))
+		mypatt <- do.call(cbind,tests)
+		mypatt[,patt:="ambig"]
+
+		for(i in 1:nrow(dc))
+		{
+			message("Deciding pattern: ",dc[i,]$pattern)
+			x <- as.vector(t(dc[i,-1]))
+			dec <- t(t(str)==x)
+			yespatt <- rowSums(dec)==ncol(dec)
+			mypatt[yespatt,patt:=dc[i,]$pattern]	
+		}
+
+		#doDecide <- function(x)
+		#{
+		#	dec <- t(t(str)==as.vector(t(x)))
+		#	yespatt
+		#}
+		#dc2 <- split(dc[,-1,drop=F],1:nrow(dc))
+		#decs <- lapply(dc2,doDecide)
+		#mypatt$codestring <- str
+		#mypatt$patt <- decide[match(mypatt$codestring,decide$codestring),]$pattern
+		#mypatt[is.na(patt),]$patt <- "ambig"
+		mypatt[patt=="000",]$patt <- "000or111"
+		mypatt$patt <- as.character(mypatt$patt)
+		mypatt
+	}
+
 
 # --------------------------------------------------------------------
 # Stage one testing
@@ -426,17 +605,19 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	# Perform pairwise tests
 	bins.mat <- as.matrix(values(bins))
 
-	# a vs b
-	todo <- c("ab","ac","bc")
+	# Compute all the pairwise comps
+	comps <- methylaction2:::getGroupComps(unique(samp$group))
 	dotest <- function(x)
 	{
-		message("Testing ",x)
+		a <- x[1]
+		b <- x[2]
+		message("Testing ",a," vs ",b)
 		s <- strsplit(x,"")[[1]]
-		out <- methylaction:::testDESeq(bins.mat,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-",x),sizefactors=sizefactors,ncore=ncore)
+		out <- methylaction2:::testDESeq(bins.mat,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
-	testres <- lapply(todo,dotest)
-	names(testres) <- todo
+	testres <- apply(comps$combos,1,dotest)
+	names(testres) <- comps$strings
 
 	if(!all(sapply(testres,nrow)==length(bins))){stop("Ran out of memory during testing, try reducing ncore")}
 
@@ -490,11 +671,15 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 		tests[(ab.code==0)&(ac.code==0)&(bc.code==0),patt:="000or111"]
 		return(tests)
 	}
-	
-	patt <- callPatterns(testres$ab, testres$ac, testres$bc, cutoff=stageone.p)
+
+	# compare new vs old	
+	#patt1 <- callPatterns(ab=testres[[1]],ac=testres[[2]],bc=testres[[3]],cutoff=stageone.p)
+	message("Calling Patterns")
+	patt <- methylaction2:::callPatternsN(res=testres,cutoff=stageone.p)
 
 	# Make means columns
-	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+	colgroups <- lapply(unique(samp$group),function(x) samp[group==x,]$sample)
+	names(colgroups) <- unique(samp$group)
 	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(as.matrix(values(signal.norm[,i])))))
 	colnames(counts.means) <- paste0(levels(samp$group),".mean")
 
@@ -571,7 +756,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	testDESeqANODEV<- function(recounts,groups,covar, ncore)
 	{
 		# chunk up data to allow parallel testing for large data sets
-		chunkids <- (seq(nrow(recounts))-1) %/% 250
+		chunkids <- (seq(nrow(recounts))-1) %/% 500
 
 		dotest <- function(rows)
 		{
@@ -654,18 +839,82 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	recounts.sig <- recounts[anodev.keep,]
 
 	# a vs b
-	todo <- c("ab","ac","bc")
+	comps <- methylaction2:::getGroupComps(unique(samp$group))
 	dotest <- function(x)
 	{
-		message("Testing ",x)
+		a <- x[1]
+		b <- x[2]
+		message("Testing ",a," vs ",b)
 		s <- strsplit(x,"")[[1]]
-		out <- methylaction:::testDESeq(recounts.sig,samp$groupcode,a=s[1],b=s[2],prefix=paste0("deseq-test2-",x),sizefactors,ncore)
+		out <- methylaction2:::testDESeq(recounts.sig,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
-	testres <- mclapply(todo,dotest,mc.cores=1)
-	names(testres) <- todo
+	testres <- apply(comps$combos,1,dotest)
+	names(testres) <- comps$strings
 
 	if(!all(sapply(testres,nrow)==nrow(recounts.sig))){stop("Ran out of memory during testing, try reducing ncore")}
+
+	callPatterns2N <- function(res,cutoff)
+	{
+		# add directions to testres
+		getDirection <- function(x)
+		{
+			x$direction <- 0
+			x[baseMeanA<baseMeanB,]$direction <- 1
+			x[x$baseMeanA>x$baseMeanB,]$direction <- -1
+			return(x)
+		}
+		res <- lapply(res,getDirection)
+
+		# combine columns accross comparisons
+		getCols <- function(x)
+		{
+			out <- data.table(p=x$pval,l2fc=x$log2FoldChange,sig=x$pval<cutoff,dir=x$direction)
+			out[is.na(p),sig:=FALSE]
+			return(out)
+		}
+		tests <- lapply(res,getCols)
+
+		# filter using decision codes:
+		# -1 = sig down
+		# 0 = NS
+		# 1 = sig up
+
+		getCodes <- function(x)
+		{
+			x[,code:=dir]
+			x[sig==FALSE,code:=0]
+			return(x)
+		}
+		tests <- lapply(tests,getCodes)
+
+		# Call pattern codes based on the decision codes
+		dc <- getDecisionTable(unique(samp$group))
+
+		# Trying to make this very easy - we just make the decision codes into strings, then all we have to do is match these strings with the decision table and get the pattern as a table lookup
+		# These strings will be ordered the same as comparisions are ordered when returned by the get comps function
+		str <- lapply(tests,function(x) x$code)
+		str <- do.call(cbind,str)
+		str <- data.table(str)
+		str$id <- 1:nrow(str)
+		str <- str[,list(toString(.SD)),by=id]$V1
+		# This is a potential bottleneck
+		# The alternative would be to iterate over the rows of dc, check each against all of str (as  matrix), assign patterns that way
+		#str <- apply(str,1,toString)
+
+
+		# Now make the DecTable into codestrings
+		decide <- data.frame(pattern=dc$pattern,codestring=apply(dc[,-1,drop=F],1,toString))
+
+		tests <- lapply(names(tests),function(x) setnames(tests[[x]],paste0(x,"_",colnames(tests[[x]]))))
+		mypatt <- do.call(cbind,tests)
+		mypatt$codestring <- str
+		mypatt$patt <- decide[match(mypatt$codestring,decide$codestring),]$pattern
+		mypatt[is.na(patt),]$patt <- "ambig"
+		mypatt[patt=="000",]$patt <- "000or111"
+		mypatt$patt <- as.character(mypatt$patt)
+		mypatt
+	}
 
 	callPatterns2 <- function(ab,ac,bc,cutoff)
 	{
@@ -719,8 +968,11 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 		return(tests)
 	}
 
-	patt <- callPatterns2(testres$ab, testres$ac, testres$bc, cutoff=post.p)
-	
+	#patt1 <- callPatterns2(testres[[1]], testres[[2]], testres[[3]], cutoff=post.p)
+	#patt2 <- callPatterns2N(res=testres, cutoff=post.p)
+	#table(patt1$patt==patt2$patt)
+	patt <- callPatternsN(res=testres, cutoff=post.p)
+
 	test.two$sig <- regions[anodev.keep]
 	values(test.two$sig) <- patt
 	test.two$sig.counts <- regions[anodev.keep]
@@ -733,7 +985,8 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	# Output list of sig DMRs
 
 	# Make frequency columns
-	colgroups <- list(a=samp[samp$groupcode=="a",]$sample,b=samp[samp$groupcode=="b",]$sample,c=samp[samp$groupcode=="c",]$sample)
+	colgroups <- lapply(unique(samp$group),function(x) samp[group==x,]$sample)
+	names(colgroups) <- unique(samp$group)
 
 	# Freq Calling via POI
 	#cuts <- as.matrix(width(dmr)/50) %*% cuts
@@ -761,9 +1014,28 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	patts <- as.character(unique(dmrfreq$pattern))
 	patts <- patts[!(patts %in% c("ambig","000or111"))]
 
+	sharpnessN <- function(patt,meth=2/3,unmeth=1/3)
+	{
+		myfreq <- dmrfreq[dmrfreq$patt==patt,paste0(unique(samp$group),".per")]
+
+		chars <- strsplit(patt,"")[[1]]
+		checkit <- chars
+		checkit[chars=="0"] <- unmeth
+		checkit[chars=="1"] <- meth
+
+		lt <- t(t(myfreq)<=checkit)
+		gt <- t(t(myfreq)>=checkit)
+
+		# Call each group as sharp or not, they must all be sharp to call the site as sharp
+		sharp <- rowSums(cbind(lt[,chars=="0",drop=F],gt[,chars=="1",drop=F]))==length(unique(samp$group))
+		
+		ret <- dmrfreq[dmrfreq$pattern==patt,]
+		ret$frequent <- sharp
+		ret
+	}
 	sharpness <- function(patt,meth=2/3,unmeth=1/3)
 	{
-		myfreq <- dmrfreq[dmrfreq$pattern==patt,c("a.per","b.per","c.per")]
+		myfreq <- dmrfreq[dmrfreq$pattern==patt,c("benign.per","low.per","high.per")]
 		chars <- strsplit(patt,"")[[1]]
 		checkit <- chars
 		checkit[chars=="0"] <- unmeth
@@ -779,7 +1051,12 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 		ret$frequent <- sharp
 		ret
 	}
-	res <- lapply(patts,sharpness)
+
+	#s1 <- sharpness("010")
+	#s2 <- sharpnessN("010")
+	#table(s1$frequent==s2$frequent)
+
+	res <- lapply(patts,sharpnessN)
 	dmrcalled <- do.call(rbind,unname(res))
 	dmrcalled$dmrid <- 1:nrow(dmrcalled)
 

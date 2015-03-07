@@ -108,9 +108,10 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 	# Do sorting
 	#ord <- order(ma$test.two$dmr$pattern)
 	#cnt <- cnt[ord,]
-	fac <- factor(sites$pattern,levels=c("001","110","011","100","010","101"))
-	cnt <- mat[order(fac,sites$anodev.padj),]
-
+	#allpatts <- apply(methylaction2:::getGroupPatterns(length(unique(ma$args$samp$group))),1,paste0,collapse="")
+	#fac <- factor(sites$pattern,levels=allpatts)
+	cnt <- mat[order(sites$pattern,sites$anodev.padj),]
+	#cnt <- mat
 	# Do transformations
 	cnt <- sqrt(cnt/ma$args$winsize)
 
@@ -118,8 +119,11 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 	#pdf(file=pdf,width=8,height=10.5)
 	png(filename=file,width=2550,height=3300,res=300)
 	sc <- c(benign="#4daf4a",low="#377eb8",high="#e41a1c")
+	samp <- ma$args$samp
+	sc <- unique(samp$color)
+	names(sc) <- unique(samp$group)
 	csc <- sc[match(samp$group,names(sc))]
-	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,sepwidth=c(0.15,0),colsep=c(7,7+6))
+	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc)
 	dev.off()
 
 	message("Plot saved to ",file)
