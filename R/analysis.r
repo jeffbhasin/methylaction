@@ -121,8 +121,8 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 				mycov <- cov[rand]
 			}
 
-			test.one <- testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
+			test.one <- methylaction2:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+			test.two <- methylaction2:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
 			ret <- test.two$dmrcalled
 			rm(test.one,test.two,mybins,mysig)
 			gc()
@@ -172,10 +172,10 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("
 
 		# make expected event table - mean of all permutations
 		realtab <- gettab(test.two$dmrcalled)
-		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig"),]
+		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111"),]
 
 		permtab <- lapply(maperm,gettab)
-		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig")),])
+		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig","1111")),])
 
 		# Need to make sure they are ordered right before doing the division
 		permtab <- lapply(permtab,function(x) x[rownames(realtab),])
@@ -971,7 +971,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	#patt1 <- callPatterns2(testres[[1]], testres[[2]], testres[[3]], cutoff=post.p)
 	#patt2 <- callPatterns2N(res=testres, cutoff=post.p)
 	#table(patt1$patt==patt2$patt)
-	patt <- callPatternsN(res=testres, cutoff=post.p)
+	patt <- methylaction2:::callPatternsN(res=testres, cutoff=post.p)
 
 	test.two$sig <- regions[anodev.keep]
 	values(test.two$sig) <- patt

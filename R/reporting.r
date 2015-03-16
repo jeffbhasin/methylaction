@@ -110,7 +110,8 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 	#cnt <- cnt[ord,]
 	#allpatts <- apply(methylaction2:::getGroupPatterns(length(unique(ma$args$samp$group))),1,paste0,collapse="")
 	#fac <- factor(sites$pattern,levels=allpatts)
-	cnt <- mat[order(sites$pattern,sites$anodev.padj),]
+	#cnt <- mat[order(sites$pattern,sites$anodev.padj),]
+	cnt <- mat
 	#cnt <- mat
 	# Do transformations
 	cnt <- sqrt(cnt/ma$args$winsize)
@@ -123,7 +124,23 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 	sc <- unique(samp$color)
 	names(sc) <- unique(samp$group)
 	csc <- sc[match(samp$group,names(sc))]
-	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc)
+
+	cs <- numeric(0)
+	last <- ""
+	for(i in 1:nrow(samp))
+	{
+		if(samp[i,]$group != last)
+		{
+			cs <- c(cs,i)
+		}
+		last <- samp[i,]$group
+	}
+
+	cs <- (cs-1)[-1] 
+
+	rs <- match(unique(sites$pattern),sites$pattern)
+	rs <- (rs-1)[-1] 
+	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,colsep=cs, sepwidth=c(0.15,5),rowsep=rs)
 	dev.off()
 
 	message("Plot saved to ",file)
