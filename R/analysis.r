@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method=c("co","fc","ac"), winsize, poifdr, stageone.p, joindist, anodev.p, post.p, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, perm.combo=F, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co", winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, perm.combo=F, ncore=1)
 {
 	ngroups <- length(unique(samp$group))
 	message("Starting analysis for a ",ngroups," group comparision")
