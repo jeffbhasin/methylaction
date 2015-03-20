@@ -7,7 +7,6 @@ ignore/*
 ._*
 *.o
 *.so
-*.pdf
 *.swo
 *.swp
 *.tmp
