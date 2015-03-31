@@ -110,6 +110,10 @@ getReads <- function(samp, bsgenome, chrs, fragsize, ncore)
 	check <- sapply(samp$bam,file.exists)
 	if(sum(check)!=nrow(samp)){stop(paste0("BAM file(s) could not be found: ",toString(samp$bam[check==F])))}
 
+	# Check BAIs exist
+	check <- sapply(paste0(samp$bam,".bai"),file.exists)
+	if(sum(check)!=nrow(samp)){stop(paste0("Bam Index (.bai) file(s) could not be found for: ",toString(samp$bam[check==F])))}
+
 	# Validate asked for chrs are in the bsgenome
 	# Check that BAM has the chrs asked for
 	if(sum(chrs %in% seqlevels(bsgenome)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(bsgenome))]), " in given bsgenome"))}
