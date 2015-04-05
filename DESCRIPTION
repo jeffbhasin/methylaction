@@ -24,4 +24,5 @@ Imports:
     GenomicAlignments,
     Repitools,
     reshape,
-    Rsubread
+    Rsubread,
+    R.utils

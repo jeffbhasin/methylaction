@@ -307,3 +307,8 @@ getCountsFc <- function(samp, bsgenome=NULL, ranges=NULL, chrs=NULL, fragsize, w
 	values(gb) <- counts
 	return(gb)
 }
+
+
+# --------------------------------------------------------------------
+# Permutation Utility
+

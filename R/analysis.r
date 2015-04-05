@@ -29,7 +29,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, perm.combo=perm.combo, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
-	fdr.filter <- methylaction2:::filter(counts, samp, poifdr)
+	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
 
 	# Get Signal Bins Only
 	message("Filtering to Signal Windows")
@@ -59,185 +59,248 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 	gc()
 
 	# Testing Stage 1
-	test.one <- methylaction2:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
+	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction2:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 	maperm <- NULL
 
-	if(nperms>0)
-	{
-		#maperm2 <- list()
-
-		doperm <- function(perm)
-		{
-			message("Permutation number ",perm)
-			#host <- system2("hostname",stdout=TRUE)
-			#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
-
-			if(perm.combo==TRUE)
-			{
-				message("Drawing permutation order from combination space")
-				ss <- as.vector(table(samp$groupcode))
-				rand <- getComboSpacePerms(an=ss[1],bn=ss[2],cn=ss[3],nperms=1,ncore=ncore)[[1]]
-			} else {
-				rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
-			}
-			
-			mysamp <- samp
-			mysamp$sample <- samp$sample[rand]
-			mysamp$bam <- samp$bam[rand]
-			if(!is.null(adjust.var))
-			{
-				mysamp[[adjust.var]] <- samp[[adjust.var]][rand]
-			}
-
-			mybins <- windows$signal
-			values(mybins) <- values(mybins)[,rand]
-			mysig <- windows$signal.norm
-			values(mysig) <- values(mysig)[,rand]
-			mysizes <- sizefactors[rand]
-
-			# rename samples so there are no identical names in the bootstrap case
-			mysamp$sample <- paste0("BS",1:nrow(samp),mysamp$sample)
-			names(mysizes) <- mysamp$sample
-			colnames(values(mybins)) <- mysamp$sample
-			colnames(values(mysig)) <- mysamp$sample
-
-			# need to check for and randomize cov/reads here too
-			mycov <- NULL
-			myreads <- NULL
-			
-			if(stagetwo.method=="co")
-			{
-				# shuffle reads
-				myreads <- reads[rand]
-				names(myreads) <- mysamp$sample
-			} else if(stagetwo.method=="ac")
-			{
-				# shuffle cov
-				mycov <- cov[rand]
-			}
-
-			test.one <- methylaction2:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
-			test.two <- methylaction2:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
-			ret <- test.two$dmrcalled
-			rm(test.one,test.two,mybins,mysig)
-			gc()
-			#maperm2[[perm]] <<- ret
-			#save(rand,file="permdump.rd",compress=T)
-			return(ret)
-		}
-
-		deathproof <- function(x)
-		{
-			ret <- tryCatch(
-				doperm(x),
-				error = function(e) 
-				{
-						message("Permutation ",x," had error: ",e$message)
-						character()
-				}
-			)
-			return(ret)
-		}
-
-		maperm <- lapply(1:nperms, deathproof)
-
-		checkdead <- sapply(maperm,class)
-		dead <- checkdead != "GRanges"
-		message("Out of ",nperms," perms, ",sum(dead)," died and were ignored")
-		maperm <- maperm[!dead]
-
-		args$permerrors <- sum(dead)
-
-		# make sure the perms report missing levels so table() gives same output for everything
-		maperm <- lapply(maperm,function(x){
-			x$pattern <- factor(x$pattern,levels=levels(test.two$dmrcalled$pattern));
-			return(x);
-		})
-
-		# make observed event table
-		gettab <- function(dmrcalled)
-		{
-			matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
-			matab <- cbind(matab,rowSums(matab))
-			colnames(matab) <- c("other","frequent","all")
-			matab <- rbind(matab,colSums(matab))
-			rownames(matab)[nrow(matab)] <- "all"
-			return(matab)
-		}
-
-		# make expected event table - mean of all permutations
-		realtab <- gettab(test.two$dmrcalled)
-		realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111"),]
-
-		permtab <- lapply(maperm,gettab)
-		permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig","1111")),])
-
-		# Need to make sure they are ordered right before doing the division
-		permtab <- lapply(permtab,function(x) x[rownames(realtab),])
-
-		permmeans <- apply(simplify2array(permtab), c(1,2), mean)
-		permmeans <- permmeans[rownames(realtab),]
-		permsds <- apply(simplify2array(permtab), c(1,2), sd)
-		permsds <- permsds[rownames(realtab),]
-		permcv <- permsds/permmeans
-		permcv <- permcv[rownames(realtab),]
-
-
-		# calculate FDR by pattern and overall
-		#expected <- Reduce("+",permtab2)/nperms
-		fdrpercents <- (permmeans/realtab)*100
-
-		# Make neat summary tables
-		real.m <- reshape::melt.matrix(realtab)
-		colnames(real.m) <- c("pattern","type","value")
-		real.m$var <- "nDMRs"
-		mean.m <- reshape::melt.matrix(permmeans)
-		colnames(mean.m) <- c("pattern","type","value")
-		mean.m$var <- "permMean"
-		sd.m <- reshape::melt.matrix(permsds)
-		colnames(sd.m) <- c("pattern","type","value")
-		sd.m$var <- "permSD"
-		cv.m <- reshape::melt.matrix(permcv)
-		colnames(cv.m) <- c("pattern","type","value")
-		cv.m$var <- "permCV"
-		fdr.m <- reshape::melt.matrix(fdrpercents)
-		colnames(fdr.m) <- c("pattern","type","value")
-		fdr.m$var <- "FDRpercent"
-		longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
-		longdf$var <- factor(longdf$var,levels=unique(longdf$var))
-		fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
-		#ma$perms$dmrs <- maperm
-		#ma$perms$fdr <- fdr
-
-		# Remove count columns from maperm to save space and not duplicate this data
-   		#maperm2 <- lapply(maperm,function(x){
-			#values(x) <- as.data.frame(values(x))[,!(colnames(values(x)) %in% samp$sample)]
-			#return(x);
-		#})
-
-	}
-
-	# Output results
-	#ma <- list(fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
-	args$end <- Sys.time()
-	args$hours <- as.numeric(difftime(args$end,args$start,units="hours"))
 	ma <- list(dmr=test.two$dmrcalled, fdr=fdr, args=args, data=list(windows=windows, fdr.filter=fdr.filter, sizefactors=sizefactors, test.one=test.one, test.two=test.two, maperm=maperm))
 
 	# Remove some things from the output to reduce the size
 	ma$data$test.two$dmrcalled <- NULL
 	values(ma$data$windows$filtered) <- NULL
-	ma$data$windows$signal <- NULL
+	#ma$data$windows$signal <- NULL
 	ma$data$test.two$dmrcalled <- NULL
+
+	if(nperms>0)
+	{
+		# call to maPerm to do the actual permutations
+		ma <- maPerm(ma=ma,nperms=nperms,save=FALSE,ncore=ncore)
+	}
+
+	# Output results
+	#ma <- list(fdr.filter=fdr.filter, sizefactors=sizefactors, windows=windows, test.one=test.one, test.two=test.two)
+	ma$args$end <- Sys.time()
+	ma$args$hours <- as.numeric(difftime(ma$args$end,ma$args$start,units="hours"))
 
 	message("Output list size in memory=",methylaction:::sizein(ma))
 	return(ma)
 }
 # --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# Given an ma object, perform n permutations
+maPerm <- function(ma,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
+{
+	args <- ma$args
+	test.two <- ma$data$test.two
+	samp <- ma$args$samp
+	adjust.var <- ma$args$adjust.var
+	windows <- ma$data$windows
+	sizefactors <- ma$data$sizefactors
+	stagetwo.method <- ma$args$stagetwo.method
+	anodev.p <- ma$args$anodev.p
+	post.p <- ma$args$post.p
+	fdr.filter <- ma$data$fdr.filter
+	fragsize <- ma$args$fragsize
+	winsize <- ma$args$winsize
+	dmrcalled <- ma$dmr
+
+	doperm <- function(perm)
+	{
+		message("Permutation number ",perm)
+		#host <- system2("hostname",stdout=TRUE)
+		#write(paste0("Started permutation ",perm," on ",host," at ",date()),file=paste0(host,".txt"),append=TRUE)
+		if(perm.combo==TRUE)
+		{
+			message("Drawing permutation order from combination space")
+			ss <- as.vector(table(samp$groupcode))
+			rand <- getComboSpacePerms(an=ss[1],bn=ss[2],cn=ss[3],nperms=1,ncore=ncore)[[1]]
+		} else {
+			rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
+		}
+		
+		mysamp <- samp
+		mysamp$sample <- samp$sample[rand]
+		mysamp$bam <- samp$bam[rand]
+		if(!is.null(adjust.var))
+		{
+			mysamp[[adjust.var]] <- samp[[adjust.var]][rand]
+		}
+
+		mybins <- windows$signal
+		values(mybins) <- values(mybins)[,rand]
+		mysig <- windows$signal.norm
+		values(mysig) <- values(mysig)[,rand]
+		mysizes <- sizefactors[rand]
+
+		# rename samples so there are no identical names in the bootstrap case
+		mysamp$sample <- paste0("BS",1:nrow(samp),mysamp$sample)
+		names(mysizes) <- mysamp$sample
+		colnames(values(mybins)) <- mysamp$sample
+		colnames(values(mysig)) <- mysamp$sample
+
+		# need to check for and randomize cov/reads here too
+		mycov <- NULL
+		myreads <- NULL
+			
+		if(stagetwo.method=="co")
+		{
+			# shuffle reads
+			myreads <- reads[rand]
+			names(myreads) <- mysamp$sample
+		} else if(stagetwo.method=="ac")
+		{
+			# shuffle cov
+			mycov <- cov[rand]
+		}
+		#message("T1")
+		test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=ma$args$stageone.p,joindist=ma$args$joindist,minsize=ma$args$minsize,ncore=ncore)
+		#message("T2")
+		test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
+		if(is.list(test.two))
+		{
+			ret <- test.two$dmrcalled
+		} else
+		{
+			ret <- test.two
+		}
+			
+		rm(test.one,test.two,mybins,mysig)
+		gc()
+		#maperm2[[perm]] <<- ret
+		#save(rand,file="permdump.rd",compress=T)
+		return(ret)
+	}
+
+	deathproof <- function(x)
+	{
+		ret <- tryCatch(
+			doperm(x),
+			error = function(e) 
+			{
+				message("Permutation ",x," had error: ",e$message)
+				character()
+			}
+		)
+		return(ret)
+	}
+
+	maperm <- lapply(1:nperms, deathproof)
+
+	checkdead <- sapply(maperm,class)
+	dead <- (checkdead != "GRanges")&(maperm!="NoDmrs")
+	message("Out of ",nperms," perms, ",sum(dead)," died and were ignored")
+	maperm <- maperm[!dead]
+
+	nodmr <- maperm=="NoDmrs"
+	message("Out of ",nperms," perms, ",sum(nodmr)," found no DMRs of any pattern")
+
+	args$permerrors <- sum(dead)
+	args$permnodmrs <- sum(nodmr)
+
+	# make observed event table
+	gettab <- function(dmrcalled)
+	{
+		dmrcalled$frequent <- factor(dmrcalled$frequent,levels=c("FALSE","TRUE"))
+		matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
+		matab <- cbind(matab,rowSums(matab))
+		colnames(matab) <- c("other","frequent","all")
+		matab <- rbind(matab,colSums(matab))
+		rownames(matab)[nrow(matab)] <- "all"
+		return(matab)
+	}
+
+	# make expected event table - mean of all permutations
+	realtab <- gettab(dmrcalled)
+	realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111"),]
+
+	# If no DMR, put out a blank table
+	mapermout <- maperm #this one won't be subsetted
+	maperm <- maperm[!nodmr]
+
+	if(sum(nodmr)>0)
+	{
+		notabs <- lapply(1:sum(nodmr),function(x) {k<-realtab; apply(k,c(1,2),function(x) 0);})
+	}
+
+	# Make perm tables
+	# make sure the perms report missing levels so table() gives same output for everything
+	maperm <- lapply(maperm,function(x){
+		x$pattern <- factor(x$pattern,levels=levels(dmrcalled$pattern));
+		return(x);
+	})
+
+	permtab <- lapply(maperm,gettab)
+	permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig","1111")),])
+
+	# Need to make sure they are ordered right before doing the division
+	permtab <- lapply(permtab,function(x) x[rownames(realtab),])
+
+	# Add the blanks back in if they're there
+	if(sum(nodmr)>0)
+	{
+		permtab <- c(permtab, notabs)
+	}
+
+	permmeans <- apply(simplify2array(permtab), c(1,2), mean)
+	permmeans <- permmeans[rownames(realtab),]
+	permsds <- apply(simplify2array(permtab), c(1,2), sd)
+	permsds <- permsds[rownames(realtab),]
+	permcv <- permsds/permmeans
+	permcv <- permcv[rownames(realtab),]
+
+
+	# calculate FDR by pattern and overall
+	#expected <- Reduce("+",permtab2)/nperms
+	fdrpercents <- (permmeans/realtab)*100
+
+	# Make neat summary tables
+	real.m <- reshape::melt.matrix(realtab)
+	colnames(real.m) <- c("pattern","type","value")
+	real.m$var <- "nDMRs"
+	mean.m <- reshape::melt.matrix(permmeans)
+	colnames(mean.m) <- c("pattern","type","value")
+	mean.m$var <- "permMean"
+	sd.m <- reshape::melt.matrix(permsds)
+	colnames(sd.m) <- c("pattern","type","value")
+	sd.m$var <- "permSD"
+	cv.m <- reshape::melt.matrix(permcv)
+	colnames(cv.m) <- c("pattern","type","value")
+	cv.m$var <- "permCV"
+	fdr.m <- reshape::melt.matrix(fdrpercents)
+	colnames(fdr.m) <- c("pattern","type","value")
+	fdr.m$var <- "FDRpercent"
+	longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
+	longdf$var <- factor(longdf$var,levels=unique(longdf$var))
+	fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
+	#ma$perms$dmrs <- maperm
+	#ma$perms$fdr <- fdr
+	# Remove count columns from maperm to save space and not duplicate this data
+	#maperm2 <- lapply(maperm,function(x){
+		#values(x) <- as.data.frame(values(x))[,!(colnames(values(x)) %in% samp$sample)]
+		#return(x);
+	#})
+
+	ma$fdr <- fdr
+	ma$data$maperm <- mapermout
+
+	if(save==T)
+	{
+		# save Rd to disk that can be loaded using maPermMerge
+		file <- paste0("ma_",R.utils::getHostname.System(),"_",as.integer(as.POSIXct(Sys.time())),".rd")
+		save(ma,file=file,compress=T)
+	} else
+	{
+		return(ma)
+	}
+}
+# --------------------------------------------------------------------
+
+
 
 # --------------------------------------------------------------------
 # Draws permtuation orders out of combination space by running a series of chooses
@@ -381,8 +444,18 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 
 	dotest <- function(rows)
 	{
-		# make master object container
-		cds <- newCountDataSet(counts[rows,],groups)
+		singleton <- FALSE
+		if(nrow(counts)==1)
+		{
+			# Workaround for estimateDispersions - will not work and can not test if only one feature, so duplicate the feature we have as an estimation in the singleton case
+			singleton <- TRUE
+			counts <- rbind(counts,counts)
+			cds <- newCountDataSet(counts,groups)
+		} else
+		{
+			# make master object container
+			cds <- newCountDataSet(counts[rows,,drop=F],groups)
+		}
 
 		# estimate the size factors for the library
 		#cds <- estimateSizeFactors(cds)
@@ -395,10 +468,18 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 		# estimate the dispersions for each gene
 		#message("Estimating dispersions")
 		cds <- suppressWarnings(estimateDispersions(cds,fitType="local",sharingMode="gene-est-only"))
+		#cds <- suppressWarnings(estimateDispersions(cds,fitType="local",sharingMode="gene-est-only"))
+		#cds<-estimateDispersions(cds,method="pooled-CR",sharingMode="gene-est-only",fitType="local")
 
 		# perform the testing
 		#message("Performing test")
 		res <- nbinomTest(cds,a,b)
+
+		if(singleton==TRUE)
+		{
+			res <- res[1,,drop=F]
+		}
+
 		return(res)
 	}
 	finalres <- mclapply(0:max(chunkids),function(x) {message("Testing chunk ",x," of ",max(chunkids));dotest(chunkids==x);},mc.cores=ncore)
@@ -552,7 +633,7 @@ getDecisionTable <- function(mygroups,human=FALSE)
 		tests <- lapply(tests,getCodes)
 
 		# Call pattern codes based on the decision codes
-		dc <- methylaction2:::getDecisionTable(unique(samp$group))
+		dc <- methylaction:::getDecisionTable(unique(samp$group))
 
 		# Trying to make this very easy - we just make the decision codes into strings, then all we have to do is match these strings with the decision table and get the pattern as a table lookup
 		# These strings will be ordered the same as comparisions are ordered when returned by the get comps function
@@ -606,14 +687,14 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	bins.mat <- as.matrix(values(bins))
 
 	# Compute all the pairwise comps
-	comps <- methylaction2:::getGroupComps(unique(samp$group))
+	comps <- methylaction:::getGroupComps(unique(samp$group))
 	dotest <- function(x)
 	{
 		a <- x[1]
 		b <- x[2]
 		message("Testing ",a," vs ",b)
-		s <- strsplit(x,"")[[1]]
-		out <- methylaction2:::testDESeq(bins.mat,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
+		#s <- strsplit(x,"")[[1]]
+		out <- methylaction:::testDESeq(bins.mat,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
 	testres <- apply(comps$combos,1,dotest)
@@ -675,7 +756,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	# compare new vs old	
 	#patt1 <- callPatterns(ab=testres[[1]],ac=testres[[2]],bc=testres[[3]],cutoff=stageone.p)
 	message("Calling Patterns")
-	patt <- methylaction2:::callPatternsN(res=testres,cutoff=stageone.p)
+	patt <- methylaction:::callPatternsN(res=testres,cutoff=stageone.p)
 
 	# Make means columns
 	colgroups <- lapply(unique(samp$group),function(x) samp[group==x,]$sample)
@@ -760,8 +841,21 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 		dotest <- function(rows)
 		{
+			singleton <- FALSE
+			if(nrow(recounts[rows,,drop=F])==1)
+			{
+				# Workaround for estimateDispersions - will not work and can not test if only one feature, so duplicate the feature we have as an estimation in the singleton case
+				singleton <- TRUE
+				thecounts <- rbind(recounts[rows,,drop=F],recounts[rows,,drop=F])
+				cds <- newCountDataSet(thecounts,groups)
+			} else
+			{
+				# make master object container
+				cds <- newCountDataSet(recounts[rows,,drop=F],groups)
+			}
+
 			# make master object container
-			cds <- newCountDataSet(recounts[rows,],groups)
+			#cds <- newCountDataSet(recounts[rows,,drop=F],groups)
 
 			# estimate the size factors for the library
 			# do we want to use size factors from previously for the whole library?
@@ -785,6 +879,10 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 				resReduced <- fitNbinomGLMs( cds, modelFormula=count~covar)
 				message("Performing test")
 				res <- nbinomGLMTest(resFull, resReduced)
+				if(singleton==TRUE)
+				{
+					res <- res[1]
+				}
 				return(res)
 		
 			} else {
@@ -794,6 +892,10 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 				resReduced <- fitNbinomGLMs( cds, modelFormula=count~1)
 				message("Performing test")
 				res <- nbinomGLMTest(resFull, resReduced)
+				if(singleton==TRUE)
+				{
+					res <- res[1]
+				}
 				return(res)
 			}
 		}
@@ -830,23 +932,26 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 	anodev.keep <- (anodev.padj<anodev.p) & !(is.na(anodev.padj))
 
+	if(sum(anodev.keep)==0){message("Found no DMRs in stage two ANODEV")}
+	if(sum(anodev.keep)==0){out<-"NoDmrs"; return(out);}
+
 	test.two <- list()
 	test.two$ns <- regions[!anodev.keep]
 	test.two$ns.counts <- regions[!anodev.keep]
 	values(test.two$ns.counts) <- normcounts[!anodev.keep,]
 
 	regions.sig <- regions[anodev.keep]
-	recounts.sig <- recounts[anodev.keep,]
+	recounts.sig <- recounts[anodev.keep,,drop=F]
 
 	# a vs b
-	comps <- methylaction2:::getGroupComps(unique(samp$group))
+	comps <- methylaction:::getGroupComps(unique(samp$group))
 	dotest <- function(x)
 	{
 		a <- x[1]
 		b <- x[2]
 		message("Testing ",a," vs ",b)
-		s <- strsplit(x,"")[[1]]
-		out <- methylaction2:::testDESeq(recounts.sig,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
+		#s <- strsplit(x,"")[[1]]
+		out <- methylaction:::testDESeq(counts=recounts.sig,groups=samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
 	testres <- apply(comps$combos,1,dotest)
@@ -854,129 +959,15 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 	if(!all(sapply(testres,nrow)==nrow(recounts.sig))){stop("Ran out of memory during testing, try reducing ncore")}
 
-	callPatterns2N <- function(res,cutoff)
-	{
-		# add directions to testres
-		getDirection <- function(x)
-		{
-			x$direction <- 0
-			x[baseMeanA<baseMeanB,]$direction <- 1
-			x[x$baseMeanA>x$baseMeanB,]$direction <- -1
-			return(x)
-		}
-		res <- lapply(res,getDirection)
-
-		# combine columns accross comparisons
-		getCols <- function(x)
-		{
-			out <- data.table(p=x$pval,l2fc=x$log2FoldChange,sig=x$pval<cutoff,dir=x$direction)
-			out[is.na(p),sig:=FALSE]
-			return(out)
-		}
-		tests <- lapply(res,getCols)
-
-		# filter using decision codes:
-		# -1 = sig down
-		# 0 = NS
-		# 1 = sig up
-
-		getCodes <- function(x)
-		{
-			x[,code:=dir]
-			x[sig==FALSE,code:=0]
-			return(x)
-		}
-		tests <- lapply(tests,getCodes)
-
-		# Call pattern codes based on the decision codes
-		dc <- getDecisionTable(unique(samp$group))
-
-		# Trying to make this very easy - we just make the decision codes into strings, then all we have to do is match these strings with the decision table and get the pattern as a table lookup
-		# These strings will be ordered the same as comparisions are ordered when returned by the get comps function
-		str <- lapply(tests,function(x) x$code)
-		str <- do.call(cbind,str)
-		str <- data.table(str)
-		str$id <- 1:nrow(str)
-		str <- str[,list(toString(.SD)),by=id]$V1
-		# This is a potential bottleneck
-		# The alternative would be to iterate over the rows of dc, check each against all of str (as  matrix), assign patterns that way
-		#str <- apply(str,1,toString)
-
-
-		# Now make the DecTable into codestrings
-		decide <- data.frame(pattern=dc$pattern,codestring=apply(dc[,-1,drop=F],1,toString))
-
-		tests <- lapply(names(tests),function(x) setnames(tests[[x]],paste0(x,"_",colnames(tests[[x]]))))
-		mypatt <- do.call(cbind,tests)
-		mypatt$codestring <- str
-		mypatt$patt <- decide[match(mypatt$codestring,decide$codestring),]$pattern
-		mypatt[is.na(patt),]$patt <- "ambig"
-		mypatt[patt=="000",]$patt <- "000or111"
-		mypatt$patt <- as.character(mypatt$patt)
-		mypatt
-	}
-
-	callPatterns2 <- function(ab,ac,bc,cutoff)
-	{
-		# beacuse the bins all line up, we can work in column space
-		ab$direction <- 0
-		ab[ab$baseMeanA<ab$baseMeanB,]$direction <- 1
-		ab[ab$baseMeanA>ab$baseMeanB,]$direction <- -1
-		ac$direction <- 0
-		ac[ac$baseMeanA<ac$baseMeanB,]$direction <- 1
-		ac[ac$baseMeanA>ac$baseMeanB,]$direction <- -1
-		bc$direction <- 0
-		bc[bc$baseMeanA<bc$baseMeanB,]$direction <- 1
-		bc[bc$baseMeanA>bc$baseMeanB,]$direction <- -1
-
-		# row by row p adjustment
-		#p.adjust(c(ab$pval,ac$pval,bc$pval),method="fdr")
-
-		# you set cutoff to 0.017 or 0.05/3 then you bonferroni adjust everything by row
-
-		tests <- data.table(ab.p=ab$pval,ab.l2fc=ab$log2FoldChange,ab.sig=ab$pval<cutoff,ab.dir=ab$direction,ac.p=ac$pval,ac.l2fc=ac$log2FoldChange,ac.sig=ac$pval<cutoff,ac.dir=ac$direction,bc.p=bc$pval,bc.l2fc=bc$log2FoldChange,bc.sig=bc$pval<cutoff,bc.dir=bc$direction)
-
-		tests[is.na(ab.p),ab.sig:=FALSE]
-		tests[is.na(ac.p),ac.sig:=FALSE]
-		tests[is.na(bc.p),bc.sig:=FALSE]
-
-		# filter using codes:
-		# -1 = sig down
-		# 0 = NS
-		# 1 = sig up
-		# could also just dispense with testing and join where directions agree, or use a much higher p-value cutoff like 0.5
-
-		tests[,ab.code:=ab.dir]
-		tests[ab.sig==FALSE,ab.code:=0]
-		tests[,ac.code:=ac.dir]
-		tests[ac.sig==FALSE,ac.code:=0]
-		tests[,bc.code:=bc.dir]
-		tests[bc.sig==FALSE,bc.code:=0]
-
-		# table of all results that came out of the test
-		tests[,codestring:=paste(ab.code,ac.code,bc.code,sep=",")]
-		#table(tests$codestring)
-
-		tests[,patt:="ambig"]
-		tests[(ab.code==0)&(ac.code==1)&(bc.code==1),patt:="001"]
-		tests[(ab.code==1)&(ac.code==1)&(bc.code==0),patt:="011"]
-		tests[(ab.code==-1)&(ac.code==-1)&(bc.code==0),patt:="100"]
-		tests[(ab.code==0)&(ac.code==-1)&(bc.code==-1),patt:="110"]
-		tests[(ab.code==1)&(ac.code==0)&(bc.code==-1),patt:="010"]
-		tests[(ab.code==-1)&(ac.code==0)&(bc.code==1),patt:="101"]
-		tests[(ab.code==0)&(ac.code==0)&(bc.code==0),patt:="000or111"]
-		return(tests)
-	}
-
 	#patt1 <- callPatterns2(testres[[1]], testres[[2]], testres[[3]], cutoff=post.p)
 	#patt2 <- callPatterns2N(res=testres, cutoff=post.p)
 	#table(patt1$patt==patt2$patt)
-	patt <- methylaction2:::callPatternsN(res=testres, cutoff=post.p)
+	patt <- methylaction:::callPatternsN(res=testres, cutoff=post.p)
 
 	test.two$sig <- regions[anodev.keep]
 	values(test.two$sig) <- patt
 	test.two$sig.counts <- regions[anodev.keep]
-	values(test.two$sig.counts) <- normcounts[anodev.keep,]
+	values(test.two$sig.counts) <- normcounts[anodev.keep,,drop=F]
 
 	#as.data.frame(table(patt$patt))
 
@@ -1004,7 +995,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	colnames(meth.per) <- paste0(colnames(meth.per),".per")
 
 	# Make means columns - for the per window counts
-	perwin.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(cnt[,i])))
+	perwin.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(cnt[,i,drop=F])))
 	colnames(perwin.means) <- paste0(levels(samp$group),".perwin.mean")
 
 	dmrfreq <- cbind(dmr,cnt,perwin.means,meth.freq,meth.per)
@@ -1029,7 +1020,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 		# Call each group as sharp or not, they must all be sharp to call the site as sharp
 		sharp <- rowSums(cbind(lt[,chars=="0",drop=F],gt[,chars=="1",drop=F]))==length(unique(samp$group))
 		
-		ret <- dmrfreq[dmrfreq$pattern==patt,]
+		ret <- dmrfreq[dmrfreq$pattern==patt,,drop=F]
 		ret$frequent <- sharp
 		ret
 	}
@@ -1061,7 +1052,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	dmrcalled$dmrid <- 1:nrow(dmrcalled)
 
 	# Make means columns
-	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(recounts.sig[,i])))
+	counts.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(recounts.sig[,i,drop=F])))
 	colnames(counts.means) <- paste0(unique(samp$group),".mean")
 
 	# Final output!
