@@ -93,7 +93,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 
 # --------------------------------------------------------------------
 # Given an ma object, perform n permutations
-maPerm <- function(ma,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
+maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
 {
 	args <- ma$args
 	test.two <- ma$data$test.two
