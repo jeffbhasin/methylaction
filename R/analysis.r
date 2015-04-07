@@ -17,8 +17,11 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co", winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, perm.combo=F, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
 {
+	cov=NULL
+	stagetwo.method="co"
+
 	ngroups <- length(unique(samp$group))
 	message("Starting analysis for a ",ngroups," group comparision")
 	samp <- data.table(samp)
@@ -26,7 +29,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 	groups <- unique(samp$group)
 	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
-	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, perm.combo=perm.combo, ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -73,12 +76,12 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 	ma$data$test.two$dmrcalled <- NULL
 	values(ma$data$windows$filtered) <- NULL
 	#ma$data$windows$signal <- NULL
-	ma$data$test.two$dmrcalled <- NULL
 
 	if(nperms>0)
 	{
 		# call to maPerm to do the actual permutations
-		ma <- maPerm(ma=ma,reads=reads,nperms=nperms,save=FALSE,ncore=ncore)
+		ma$data$maperm <- methylaction:::maPerm(ma=ma,reads=reads,nperms=nperms,perm.boot=perm.boot,save=FALSE,ncore=ncore)
+		ma$fdr <- methylaction:::maPermFdr(ma=ma,maperm=ma$data$maperm,recut.p=0.05)
 	}
 
 	# Output results
@@ -93,7 +96,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 
 # --------------------------------------------------------------------
 # Given an ma object, perform n permutations
-maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
+maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 {
 	args <- ma$args
 	test.two <- ma$data$test.two
@@ -191,6 +194,29 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
 
 	maperm <- lapply(1:nperms, deathproof)
 
+	#ma$fdr <- fdr
+	#ma$data$maperm <- maperm
+
+	if(save==T)
+	{
+		# save Rd to disk that can be loaded using maPermMerge
+		file <- paste0("maperm_",R.utils::getHostname.System(),"_",as.integer(as.POSIXct(Sys.time())),".rd")
+		save(maperm,file=file,compress=T)
+		message("Saved maperm object in ",file)
+	} else
+	{
+		return(maperm)
+	}
+}
+# --------------------------------------------------------------------
+
+# Recompute FDRs based on permutation data in ma$data$maperm
+maPermFdr <- function(ma,maperm,recut.p=0.05)
+{
+	#maperm <- ma$data$maperm
+	nperms <- length(maperm)
+	dmrcalled <- ma$dmr
+
 	checkdead <- sapply(maperm,class)
 	dead <- (checkdead != "GRanges")&(maperm!="NoDmrs")
 	message("Out of ",nperms," perms, ",sum(dead)," died and were ignored")
@@ -199,12 +225,13 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
 	nodmr <- maperm=="NoDmrs"
 	message("Out of ",nperms," perms, ",sum(nodmr)," found no DMRs of any pattern")
 
-	args$permerrors <- sum(dead)
-	args$permnodmrs <- sum(nodmr)
+	ma$args$permerrors <- sum(dead)
+	ma$args$permnodmrs <- sum(nodmr)
 
 	# make observed event table
 	gettab <- function(dmrcalled)
 	{
+		dmrcalled <- dmrcalled[dmrcalled$anodev.padj<recut.p]
 		dmrcalled$frequent <- factor(dmrcalled$frequent,levels=c("FALSE","TRUE"))
 		matab <- as.matrix(table(dmrcalled$pattern,dmrcalled$frequent))
 		matab <- cbind(matab,rowSums(matab))
@@ -219,7 +246,7 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
 	realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111"),]
 
 	# If no DMR, put out a blank table
-	mapermout <- maperm #this one won't be subsetted
+	#mapermout <- maperm #this one won't be subsetted
 	maperm <- maperm[!nodmr]
 
 	if(sum(nodmr)>0)
@@ -285,22 +312,8 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=T,ncore)
 		#return(x);
 	#})
 
-	ma$fdr <- fdr
-	ma$data$maperm <- mapermout
-
-	if(save==T)
-	{
-		# save Rd to disk that can be loaded using maPermMerge
-		file <- paste0("ma_",R.utils::getHostname.System(),"_",as.integer(as.POSIXct(Sys.time())),".rd")
-		save(ma,file=file,compress=T)
-	} else
-	{
-		return(ma)
-	}
+	return(fdr)
 }
-# --------------------------------------------------------------------
-
-
 
 # --------------------------------------------------------------------
 # Draws permtuation orders out of combination space by running a series of chooses
@@ -1069,9 +1082,9 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 }
 
 # given a directory with RData files saved by maPerm(), find them and merge the perms together, re-calculating the FDRs
-maPermMerge <- function(dir="")
+maPermMerge <- function(dir=".")
 {
-	rds <- dir(dir,pattern="ma_",full.names=T)
+	rds <- dir(dir,pattern="maperm_",full.names=T)
 
 	mas <- list()
 	idx <- 1
@@ -1079,8 +1092,10 @@ maPermMerge <- function(dir="")
 	{
 		message("Loading: ",i)
 		load(i)
-		mas[[idx]] <- ma$data$maperm
+		mas[[idx]] <- maperm
+		message("Found ",length(maperm)," perms")
 		idx <- idx + 1
+		rm(maperm)
 	}
 
 	# lapply had memory errors, sticking with one by one on the loop
@@ -1092,13 +1107,13 @@ maPermMerge <- function(dir="")
 	mas <- do.call(c,mas)
 	message("Loaded ",length(mas)," permutations from ",length(rds)," maPerm() .rd files")
 
-	load(rds[1])
-	ma$data$maperm <- mas
+	#load(rds[1])
+	#ma$data$maperm <- mas
 	#summary(ma$data$maperm)
-	message("Loaded ",length(ma$data$maperm)," perms")
-	tab <- methylaction::maTable(ma,recut.p=0.05)
-	ma$fdr <- tab
-	return(ma)
+	#message("Loaded ",length(ma$data$maperm)," perms")
+	#tab <- methylaction:::maPermFdr(ma,recut.p=0.05)
+	#ma$fdr <- tab
+	return(mas)
 }
 
 # --------------------------------------------------------------------
