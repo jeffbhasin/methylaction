@@ -78,7 +78,7 @@ methylaction <- function(samp, counts, reads=NULL, cov=NULL, stagetwo.method="co
 	if(nperms>0)
 	{
 		# call to maPerm to do the actual permutations
-		ma <- maPerm(ma=ma,nperms=nperms,save=FALSE,ncore=ncore)
+		ma <- maPerm(ma=ma,reads=reads,nperms=nperms,save=FALSE,ncore=ncore)
 	}
 
 	# Output results
@@ -1067,4 +1067,38 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 	return(test.two)
 }
+
+# given a directory with RData files saved by maPerm(), find them and merge the perms together, re-calculating the FDRs
+maPermMerge <- function(dir="")
+{
+	rds <- dir(dir,pattern="ma_",full.names=T)
+
+	mas <- list()
+	idx <- 1
+	for(i in rds)
+	{
+		message("Loading: ",i)
+		load(i)
+		mas[[idx]] <- ma$data$maperm
+		idx <- idx + 1
+	}
+
+	# lapply had memory errors, sticking with one by one on the loop
+	# isn't so bad in terms of runtime
+	#mas <- mclapply(rds,function(x) {message("Loading: ",x);load(x);return(ma)},mc.cores=15)
+
+
+	# now just grab all the perms
+	mas <- do.call(c,mas)
+	message("Loaded ",length(mas)," permutations from ",length(rds)," maPerm() .rd files")
+
+	load(rds[1])
+	ma$data$maperm <- mas
+	#summary(ma$data$maperm)
+	message("Loaded ",length(ma$data$maperm)," perms")
+	tab <- methylaction::maTable(ma,recut.p=0.05)
+	ma$fdr <- tab
+	return(ma)
+}
+
 # --------------------------------------------------------------------
