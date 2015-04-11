@@ -118,8 +118,12 @@ getReads <- function(samp, chrs, fragsize, ncore)
 	# Check that BAM has the chrs asked for
 	#if(sum(chrs %in% seqlevels(bsgenome)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(bsgenome))]), " in given bsgenome"))}
 
+	b1 <- Rsamtools::BamFile(samp$bam[1])
+	#sl <- seqlengths(b1)
+	if(sum(chrs %in% seqlevels(b1)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(b1))]), " in given BAM header"))}
+
 	# Use the index so we don't bother reading in from the unaligned chrs
-	which.gr <- GRanges(chrs,IRanges(1,seqlengths(bsgenome)[chrs]))
+	which.gr <- GRanges(chrs,IRanges(1,seqlengths(b1)[chrs]))
 
 	bam2gr <- function(bampath)
     {
@@ -128,7 +132,8 @@ getReads <- function(samp, chrs, fragsize, ncore)
     	# Flag: records to read in (row filtering)
     	# Which: what sequences must be overlaped (chr/pos filtering)
     	param <- Rsamtools::ScanBamParam(what=character(), which=which.gr, flag=Rsamtools::scanBamFlag(isUnmappedQuery=FALSE))
-    	if(fragsize="paired")
+
+    	if(fragsize=="paired")
     	{
     		bam.ga <- GenomicAlignments::readGAlignmentPairs(bampath, param = param)
     	} else {

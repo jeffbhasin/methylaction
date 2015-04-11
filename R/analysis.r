@@ -17,7 +17,7 @@
 #' @param ncore Number of cores to use.
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
+methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, freq=2/3, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
 {
 	cov=NULL
 	stagetwo.method="co"
@@ -819,7 +819,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,winsize,anodev.p,adjust.var,post.p, fdr.filter, ncore)
+testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,winsize,anodev.p,adjust.var,post.p, fdr.filter, freq,ncore)
 {
 	message("Begin stage two testing")
 
@@ -1018,7 +1018,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	patts <- as.character(unique(dmrfreq$pattern))
 	patts <- patts[!(patts %in% c("ambig","000or111"))]
 
-	sharpnessN <- function(patt,meth=2/3,unmeth=1/3)
+	sharpnessN <- function(patt,meth=freq,unmeth=(1-freq))
 	{
 		myfreq <- dmrfreq[dmrfreq$patt==patt,paste0(unique(samp$group),".per")]
 
@@ -1037,7 +1037,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 		ret$frequent <- sharp
 		ret
 	}
-	sharpness <- function(patt,meth=2/3,unmeth=1/3)
+	sharpness <- function(patt,meth=freq,unmeth=(1-freq))
 	{
 		myfreq <- dmrfreq[dmrfreq$pattern==patt,c("benign.per","low.per","high.per")]
 		chars <- strsplit(patt,"")[[1]]
