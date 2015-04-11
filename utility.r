@@ -56,17 +56,17 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 #' @param winsize Size of the non-overlapping windows.
 #' @return A GenomicRanges object with values() containing a table of counts for each sample at each window.
 #' @export
-getCounts <- function(samp, reads, ranges=NULL, chrs=NULL, winsize=50, ncore=1)
+getCounts <- function(samp, reads, bsgenome=NULL, ranges=NULL, chrs=NULL, winsize=50, ncore=1)
 {
 	# Either give bsgenome to automatically tile the genome, or give a pre-defined ranges set
-	#if(is.null(bsgenome)&is.null(ranges)){stop("Need to give either bsgenome (count in genome-wide non-overlapping windows for the given genome) or ranges (count in pre-defined GenomicRanges object).")}
-	#if(!is.null(bsgenome)&!is.null(ranges)){stop("Please give either bsgenome or ranges, not both.")}
+	if(is.null(bsgenome)&is.null(ranges)){stop("Need to give either bsgenome (count in genome-wide non-overlapping windows for the given genome) or ranges (count in pre-defined GenomicRanges object).")}
+	if(!is.null(bsgenome)&!is.null(ranges)){stop("Please give either bsgenome or ranges, not both.")}
 
 	# Make GRanges of non-overlapping windows accross the genome
-	if(is.null(ranges))
+	if(!is.null(bsgenome))
 	{
 		message("Generating Window Positions")
-		gb <- Repitools::genomeBlocks(seqlengths(reads[[1]]),chrs=chrs,width=winsize)
+		gb <- Repitools::genomeBlocks(Hsapiens,chrs=chrs,width=winsize)
 	} else
 	{
 		gb <- ranges
@@ -102,7 +102,7 @@ getCounts <- function(samp, reads, ranges=NULL, chrs=NULL, winsize=50, ncore=1)
 #' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage.
 #' @return A list of GenomicRanges objects.
 #' @export
-getReads <- function(samp, chrs, fragsize, ncore)
+getReads <- function(samp, bsgenome, chrs, fragsize, ncore)
 {
 	message("Reading BAMs from disk with ",ncore," concurrent processes")
 	# Validate BAM existence
@@ -116,7 +116,7 @@ getReads <- function(samp, chrs, fragsize, ncore)
 
 	# Validate asked for chrs are in the bsgenome
 	# Check that BAM has the chrs asked for
-	#if(sum(chrs %in% seqlevels(bsgenome)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(bsgenome))]), " in given bsgenome"))}
+	if(sum(chrs %in% seqlevels(bsgenome)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(bsgenome))]), " in given bsgenome"))}
 
 	# Use the index so we don't bother reading in from the unaligned chrs
 	which.gr <- GRanges(chrs,IRanges(1,seqlengths(bsgenome)[chrs]))
@@ -128,12 +128,7 @@ getReads <- function(samp, chrs, fragsize, ncore)
     	# Flag: records to read in (row filtering)
     	# Which: what sequences must be overlaped (chr/pos filtering)
     	param <- Rsamtools::ScanBamParam(what=character(), which=which.gr, flag=Rsamtools::scanBamFlag(isUnmappedQuery=FALSE))
-    	if(fragsize="paired")
-    	{
-    		bam.ga <- GenomicAlignments::readGAlignmentPairs(bampath, param = param)
-    	} else {
-    		bam.ga <- GenomicAlignments::readGAlignments(bampath, param = param)
-    	}
+    	bam.ga <- GenomicAlignments::readGAlignments(bampath, param = param)
     	# Not using which
 	    #bam.ga3 <- bam.ga2[seqnames(bam.ga2) %in% chrs]
     	#param <- Rsamtools::ScanBamParam(what=character(), flag=scanBamFlag(isUnmappedQuery=FALSE))
