@@ -65,7 +65,7 @@ methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
 	# Testing Stage 2 + Methylation Modelling
-	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
+	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, freq=freq, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
 	maperm <- NULL
@@ -163,7 +163,7 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 		#message("T1")
 		test.one <- methylaction:::testOne(samp=mysamp,bins=mybins,signal.norm=mysig,chrs=unique(as.vector(seqnames(mybins))),sizefactors=mysizes,stageone.p=ma$args$stageone.p,joindist=ma$args$joindist,minsize=ma$args$minsize,ncore=ncore)
 		#message("T2")
-		test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
+		test.two <- methylaction:::testTwo(samp=mysamp, cov=mycov, reads=myreads, stagetwo.method=stagetwo.method, regions=test.one$regions, freq=freq, sizefactors=mysizes, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, post.p=post.p, adjust.var=adjust.var, fdr.filter=fdr.filter,ncore=ncore)
 		if(is.list(test.two))
 		{
 			ret <- test.two$dmrcalled
