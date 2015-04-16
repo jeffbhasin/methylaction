@@ -29,7 +29,7 @@ methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone
 	groups <- unique(samp$group)
 	if(!is.null(adjust.var)){if(!(adjust.var %in% colnames(samp))){stop("No column with name equal to adjust.var found in samp")}}
 
-	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, ncore=ncore, start=Sys.time())
+	args <- list(samp=samp, stagetwo.method=stagetwo.method, winsize=winsize, poifdr=poifdr, stageone.p=stageone.p, freq=freq, joindist=joindist, anodev.p=anodev.p, adjust.var=adjust.var, post.p=post.p, minsize=minsize, nperms=nperms, perm.boot=perm.boot, ncore=ncore, start=Sys.time())
 
 	# Do Initial Filtering
 	fdr.filter <- methylaction:::filter(counts, samp, poifdr)
@@ -111,6 +111,7 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 	fragsize <- ma$args$fragsize
 	winsize <- ma$args$winsize
 	dmrcalled <- ma$dmr
+	freq <- ma$args$freq
 
 	doperm <- function(perm)
 	{
