@@ -244,7 +244,8 @@ maPermFdr <- function(ma,maperm,recut.p=0.05)
 
 	# make expected event table - mean of all permutations
 	realtab <- gettab(dmrcalled)
-	realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111"),]
+	allone <- paste(as.character(rep(1,length(unique(samp$group)))),collapse="")
+	realtab <- realtab[!rownames(realtab) %in% c("000or111","ambig","1111",allone),]
 
 	# If no DMR, put out a blank table
 	#mapermout <- maperm #this one won't be subsetted
@@ -263,7 +264,8 @@ maPermFdr <- function(ma,maperm,recut.p=0.05)
 	})
 
 	permtab <- lapply(maperm,gettab)
-	permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig","1111")),])
+	allone <- paste(as.character(rep(1,length(unique(samp$group)))),collapse="")
+	permtab <- lapply(permtab,function(x) x[!(rownames(x) %in% c("000or111","ambig","1111",allone)),])
 
 	# Need to make sure they are ordered right before doing the division
 	permtab <- lapply(permtab,function(x) x[rownames(realtab),])
@@ -788,7 +790,8 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	bins.gr$pattTestOne <- patt$patt
 	
 	# split out by pattern
-	sigpatt <- bins.gr[!(bins.gr$pattTestOne %in% c("ambig","000or111"))]
+	allone <- paste(as.character(rep(1,length(unique(samp$group)))),collapse="")
+	sigpatt <- bins.gr[!(bins.gr$pattTestOne %in% c("ambig","000or111",allone))]
 	pattrows <- sigpatt$pattTestOne
 	values(sigpatt) <- NULL
 	bins.bypatt <- split(sigpatt,pattrows)
@@ -1017,7 +1020,8 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 
 	# Want to know sharpness - should be all 0 groups are no more than 1/3 meth, and all 1 groups are no less than 2/3 meth
 	patts <- as.character(unique(dmrfreq$pattern))
-	patts <- patts[!(patts %in% c("ambig","000or111"))]
+	allone <- paste(as.character(rep(1,length(unique(samp$group)))),collapse="")
+	patts <- patts[!(patts %in% c("ambig","000or111",allone))]
 
 	sharpnessN <- function(patt,meth=freq,unmeth=(1-freq))
 	{
