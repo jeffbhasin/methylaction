@@ -214,6 +214,7 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 # Recompute FDRs based on permutation data in ma$data$maperm
 maPermFdr <- function(ma,maperm,recut.p=0.05)
 {
+	samp <- ma$args$samp
 	#maperm <- ma$data$maperm
 	nperms <- length(maperm)
 	dmrcalled <- ma$dmr
