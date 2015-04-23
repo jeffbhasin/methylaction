@@ -96,7 +96,7 @@ methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone
 
 # --------------------------------------------------------------------
 # Given an ma object, perform n permutations
-maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
+maPerm <- function(ma,reads,nperms,combos=NULL,save=T,perm.combo=F,perm.boot=F,ncore)
 {
 	args <- ma$args
 	test.two <- ma$data$test.two
@@ -113,6 +113,14 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 	dmrcalled <- ma$dmr
 	freq <- ma$args$freq
 
+	if(!is.null(combos))
+	{
+		nperms <- nrow(combos)
+		perm.boot <- F
+		perm.combo <- F
+		stopifnot(ncol(combos)==nrow(samp))
+	}
+
 	doperm <- function(perm)
 	{
 		message("Permutation number ",perm)
@@ -123,6 +131,10 @@ maPerm <- function(ma,reads,nperms,save=T,perm.combo=F,perm.boot=F,ncore)
 			message("Drawing permutation order from combination space")
 			ss <- as.vector(table(samp$groupcode))
 			rand <- getComboSpacePerms(an=ss[1],bn=ss[2],cn=ss[3],nperms=1,ncore=ncore)[[1]]
+		} else if (!is.null(combos)) {
+			rand <- combos[perm,]
+			message("Using pre-set combination vector:")
+			print(rand)
 		} else {
 			rand <- sample(1:nrow(samp),nrow(samp),replace=perm.boot)
 		}
