@@ -4,26 +4,30 @@
 # Exported Functions
 
 # --------------------------------------------------------------------
-#' Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq)
+#' Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq) and similar techniques
 #'
-#' Once the counts have been pre-processed, this function performs all the analysis. Detailed results from intermediate steps are stored in the output list object to analyze method performance and provide input for the summary and plotting functions.
-#' @param samp Description of samples from readSampleInfo()
+#' After the counts have been pre-processed, this function performs all the analysis. Detailed results from intermediate steps are stored in the output list object to analyze method performance and provide input for the summary, export, and plotting functions.
+#' @param samp Sample data.frame from readSampleInfo()
 #' @param counts Preprocessed count data from getCounts()
-#' @param bsgenome b-string genome (bsgenome) object for the genome
-#' @param fragsize The average fragment length selected for in the sequencing experiment (used to extend reads when re-counting for regions in stage two testing).
-#' @param winsize Size of the windows used when counting.
-#' @param poifdr False discovery rate to use during initital filtering.
-#' @param stageone.p P-value cutoff for stage one testing.
-#' @param anodev.p P-value cutoff for the analysis of deviance (ANODEV) in stage two testing (ignored for two group comparisions).
-#' @param post.p P-value cutoff for post-tests (or for the single test stage two test in the two group case).
-#' @param minsize Minimum size for a reported region.
-#' @param ncore Number of cores to use.
+#' @param reads Preprocessed reads/fragments data from getReads()
+#' @param poifdr False discovery rate to use during initial filtering and frequency calling. Changing this value will change the threshold used for calling the presence of methylation.
+#' @param stageone.p P-value cutoff for the pairwise testing in stage one.
+#' @param anodev.p P-value cutoff for the analysis of deviance (ANODEV) in stage two testing.
+#' @param post.p P-value cutoff for post-tests in stage two testing.
+#' @param freq Fraction of samples within groups that must agree with respect to methylation status in order for "frequent" to be "TRUE" in the output DMR list.
+#' @param minsize Minimum size of DMRs to report (in bp)
+#' @param joindist Extend significant windows into DMRs over non-significant stage one windows between them up to this distance large (in bp)
+#' @param adjust.var Name of a column present in "samp" that will be used as a covariate adjustment in the stage two ANODEV generalized linear model (GLM)
+#' @param nperms Optional, perform this number of permutations after calling DMRs. Will create a data.table called "FDR" in the output list. See also maPerm(), maPermMerge(), and maPermFdr() for manual permutation running and FDR calculation.
+#' @param perm.boot If nperms > 0 and if TRUE, perform bootstrapping (sampling with replacement). Otherwise, perform permutations (sampling without permutations)
+#' @param ncore Number of parallel processes to use
 #' @return A list containing detailed results from each stage of the analysis.
 #' @export
-methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone.p=0.05, joindist=200, anodev.p=0.05, post.p=0.05, freq=2/3, adjust.var=NULL, minsize=150, nperms=0, perm.boot=F, ncore=1)
+methylaction <- function(samp, counts, reads, poifdr=0.1, stageone.p=0.05, anodev.p=0.05, post.p=0.05, freq=2/3, minsize=150, joindist=200, adjust.var=NULL, nperms=0, perm.boot=F, ncore=1)
 {
-	cov=NULL
-	stagetwo.method="co"
+	cov <- NULL
+	stagetwo.method <- "co"
+	winsize <- width(counts)[1]
 
 	ngroups <- length(unique(samp$group))
 	message("Starting analysis for a ",ngroups," group comparision")
@@ -67,7 +71,7 @@ methylaction <- function(samp, counts, reads=NULL, winsize, poifdr=0.1, stageone
 	# Testing Stage 1
 	test.one <- methylaction:::testOne(samp=samp,bins=windows$signal,signal.norm=windows$signal.norm,chrs=unique(as.vector(seqnames(windows$signal))),sizefactors=sizefactors,stageone.p=stageone.p,joindist=joindist,minsize=minsize,ncore=ncore)
 
-	# Testing Stage 2 + Methylation Modelling
+	# Testing Stage 2 + Methylation Modeling
 	test.two <- methylaction:::testTwo(samp=samp, cov=cov, reads=reads, stagetwo.method=stagetwo.method, regions=test.one$regions, sizefactors=sizefactors, fragsize=fragsize, winsize=winsize, anodev.p=anodev.p, freq=freq, adjust.var=adjust.var, post.p=post.p, fdr.filter=fdr.filter, ncore=ncore)
 
 	fdr <- NULL
@@ -155,7 +159,6 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 		a <- x[1]
 		b <- x[2]
 		message("Testing ",a," vs ",b)
-		#s <- strsplit(x,"")[[1]]
 		out <- methylaction:::testDESeq(bins.mat,samp$group,a=a,b=b,prefix=paste0("deseq-",a," vs ",b),sizefactors=sizefactors,ncore=ncore)
 		return(out)
 	}
@@ -164,59 +167,6 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 
 	if(!all(sapply(testres,nrow)==length(bins))){stop("Ran out of memory during testing, try reducing ncore")}
 
-	# call patterns genome wide based on ab, ac, and bc test results
-	callPatterns <- function(ab,ac,bc,cutoff=0.05)
-	{
-		# beacuse the bins all line up, we can work in column space
-		ab$direction <- 0
-		ab[ab$baseMeanA<ab$baseMeanB,]$direction <- 1
-		ab[ab$baseMeanA>ab$baseMeanB,]$direction <- -1
-		ac$direction <- 0
-		ac[ac$baseMeanA<ac$baseMeanB,]$direction <- 1
-		ac[ac$baseMeanA>ac$baseMeanB,]$direction <- -1
-		bc$direction <- 0
-		bc[bc$baseMeanA<bc$baseMeanB,]$direction <- 1
-		bc[bc$baseMeanA>bc$baseMeanB,]$direction <- -1
-
-		tests <- data.table(ab.p=ab$pval,ab.l2fc=ab$log2FoldChange,ab.sig=ab$pval<cutoff,ab.dir=ab$direction,ac.p=ac$pval,ac.l2fc=ac$log2FoldChange,ac.sig=ac$pval<cutoff,ac.dir=ac$direction,bc.p=bc$pval,bc.l2fc=bc$log2FoldChange,bc.sig=bc$pval<cutoff,bc.dir=bc$direction)
-
-		# Fix for NA p-values
-		# According to S. Anders: "Only in case 1 (zero counts in _all_ samples that are involved in the comparison), the p values is NA. This makes sense because if you do not observe anything from a gene you cannot say anything about it."
-		# I will set these to be p-value 1, so they never come up as sig differences
-		tests[is.na(ab.p),ab.sig:=FALSE]
-		tests[is.na(ac.p),ac.sig:=FALSE]
-		tests[is.na(bc.p),bc.sig:=FALSE]
-
-		# filter using codes:
-		# -1 = sig down
-		# 0 = NS
-		# 1 = sig up
-		# could also just dispense with testing and join where directions agree, or use a much higher p-value cutoff like 0.5
-
-		tests[,ab.code:=ab.dir]
-		tests[ab.sig==FALSE,ab.code:=0]
-		tests[,ac.code:=ac.dir]
-		tests[ac.sig==FALSE,ac.code:=0]
-		tests[,bc.code:=bc.dir]
-		tests[bc.sig==FALSE,bc.code:=0]
-
-		# table of all results that came out of the test
-		tests[,codestring:=paste(ab.code,ac.code,bc.code,sep=",")]
-		#table(tests$codestring)
-
-		tests[,patt:="ambig"]
-		tests[(ab.code==0)&(ac.code==1)&(bc.code==1),patt:="001"]
-		tests[(ab.code==1)&(ac.code==1)&(bc.code==0),patt:="011"]
-		tests[(ab.code==-1)&(ac.code==-1)&(bc.code==0),patt:="100"]
-		tests[(ab.code==0)&(ac.code==-1)&(bc.code==-1),patt:="110"]
-		tests[(ab.code==1)&(ac.code==0)&(bc.code==-1),patt:="010"]
-		tests[(ab.code==-1)&(ac.code==0)&(bc.code==1),patt:="101"]
-		tests[(ab.code==0)&(ac.code==0)&(bc.code==0),patt:="000or111"]
-		return(tests)
-	}
-
-	# compare new vs old	
-	#patt1 <- callPatterns(ab=testres[[1]],ac=testres[[2]],bc=testres[[3]],cutoff=stageone.p)
 	message("Calling Patterns")
 	patt <- methylaction:::callPatternsN(res=testres,cutoff=stageone.p)
 
@@ -255,10 +205,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	regions <- regions.gr[width(regions.gr)>=minsize]
 
 	# output: genomic ranges to pass to stage 2
-	# regions.gr
 
-	# save to an Rd
-	#save(bins.gr,testres,tests,regions.gr,file="testone.rd",compress=T)
 	patterns <- bins
 	values(patterns) <- patt
 
@@ -414,9 +361,6 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 
 	if(!all(sapply(testres,nrow)==nrow(recounts.sig))){stop("Ran out of memory during testing, try reducing ncore")}
 
-	#patt1 <- callPatterns2(testres[[1]], testres[[2]], testres[[3]], cutoff=post.p)
-	#patt2 <- callPatterns2N(res=testres, cutoff=post.p)
-	#table(patt1$patt==patt2$patt)
 	patt <- methylaction:::callPatternsN(res=testres, cutoff=post.p)
 
 	test.two$sig <- regions[anodev.keep]
@@ -499,10 +443,6 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 		ret
 	}
 
-	#s1 <- sharpness("010")
-	#s2 <- sharpnessN("010")
-	#table(s1$frequent==s2$frequent)
-
 	res <- lapply(patts,sharpnessN)
 	dmrcalled <- do.call(rbind,unname(res))
 	dmrcalled$dmrid <- 1:nrow(dmrcalled)
@@ -513,11 +453,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 
 	# Final output!
 	dmr <- cbind(dmr,counts.means)
-	#dmr$f <- paste(dmr$a,dmr$b,dmr$c,sep=",")
 
-	#test.two <- list()
-	# test.two$ns
-	#test.two$sig <- # GRanges with the normalized DEseq counts + deviances used from the ANODEV stage - also have these available in the $ns object
 	test.two$dmr <- makeGRanges(dmr)
 	test.two$dmrcalled <- makeGRanges(dmrcalled)
 
@@ -552,10 +488,6 @@ testDESeq <- function(counts,groups,a,b,prefix,sizefactors,ncore)
 		# estimate the size factors for the library
 		#cds <- estimateSizeFactors(cds)
 		sizeFactors(cds) <- sizefactors
-
-		# pull back DEseq normalized counts - use for visualization
-		# probably want to make the WIG files out of these
-		#head( counts( cds, normalized=TRUE ) )
 
 		# estimate the dispersions for each gene
 		#message("Estimating dispersions")
@@ -736,18 +668,8 @@ callPatternsN <- function(res,cutoff=0.05)
 	# Call pattern codes based on the decision codes
 	dc <- methylaction:::getDecisionTable(unique(samp$group))
 
-	# Trying to make this very easy - we just make the decision codes into strings, then all we have to do is match these strings with the decision table and get the pattern as a table lookup
-	# These strings will be ordered the same as comparisions are ordered when returned by the get comps function
 	str <- lapply(tests,function(x) x$code)
 	str <- do.call(cbind,str)
-	#str <- data.table(str)
-	#str$id <- 1:nrow(str)
-	#str <- str[,list(toString(.SD)),by=id]$V1
-	# This is a potential bottleneck
-	# The alternative would be to iterate over the rows of dc, check each against all of str (as  matrix), assign patterns that way
-	#str <- apply(str,1,toString)
-	# Now make the DecTable into codestrings
-	#decide <- data.frame(pattern=dc$pattern,codestring=apply(dc[,-1,drop=F],1,toString))
 
 	tests <- lapply(names(tests),function(x) setnames(tests[[x]],paste0(x,"_",colnames(tests[[x]]))))
 	mypatt <- do.call(cbind,tests)
@@ -762,16 +684,6 @@ callPatternsN <- function(res,cutoff=0.05)
 		mypatt[yespatt,patt:=dc[i,]$pattern]	
 	}
 
-	#doDecide <- function(x)
-	#{
-	#	dec <- t(t(str)==as.vector(t(x)))
-	#	yespatt
-	#}
-	#dc2 <- split(dc[,-1,drop=F],1:nrow(dc))
-	#decs <- lapply(dc2,doDecide)
-	#mypatt$codestring <- str
-	#mypatt$patt <- decide[match(mypatt$codestring,decide$codestring),]$pattern
-	#mypatt[is.na(patt),]$patt <- "ambig"
 	mypatt[patt=="000",]$patt <- "000or111"
 	mypatt$patt <- as.character(mypatt$patt)
 	mypatt
