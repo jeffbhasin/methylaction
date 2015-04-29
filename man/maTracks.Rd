@@ -4,24 +4,21 @@
 \alias{maTracks}
 \title{Write BED and BIGWIG files for normalized, filter-passed window count values}
 \usage{
-maTracks(ma, path = ".", bigwig = FALSE, chrs = NULL, bsgenome = NULL,
-  ncore = NULL)
+maTracks(ma, reads, path = ".", bigwig = FALSE, ncore = 1)
 }
 \arguments{
 \item{ma}{Output list from a run of methylaction()}
 
-\item{path}{Folder to save the files in (defulat: current working directory)}
+\item{reads}{Preprocessed reads/fragments data from getReads()}
 
-\item{bigwig}{Convert to BIGWIG files, requires wigToBigWig in $PATH (default: FALSE)}
+\item{path}{Folder to save the files in, will create if does not exist}
 
-\item{chrs}{}
+\item{bigwig}{If TRUE, convert the BED to BIGWIG files, requires wigToBigWig in $PATH (obtain from the Jim Kent source tree)}
 
-\item{bsgenome}{}
-
-\item{ncore}{}
+\item{ncore}{Number of parallel processes to use}
 }
 \value{
-Writes BED file to disk.
+Writes BED file to disk and optionally converts to a bigWig file.
 }
 \description{
 Creates a BED file suitable for uploading as a custom track to the UCSC genome browser.

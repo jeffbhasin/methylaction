@@ -4,9 +4,21 @@
 # Exported Functions
 
 # --------------------------------------------------------------------
-# Given an ma object, perform n permutations
-maPerm <- function(ma,reads,nperms,combos=NULL,save=T,perm.combo=F,perm.boot=F,ncore)
+#' Permute or Bootstrap DMR Detection
+#'
+#' Will perform permutations or bootstraps after methylaction() has been called. See also maPermMerge() and maPermFdr().
+#' @param ma Output object from methylaction()
+#' @param reads Preprocessed reads/fragments data from getReads()
+#' @param nperms Number of permutation (or bootstrap) iterations to perform
+#' @param combos A matrix of pre-set combinations to use. Useful for smaller sample sizes where there are only a limited number of possible combinations. The row should have ncols = number of samples, and each row represents a re-ordering of samples into groups (where the groups will be set in the order they appear in the "samp" given to methylaction())
+#' @param save If true, save an RData file of the permutations. These can be merged using maPermMerge(). Useful for running permutations across multiple computers or in a cluster environment. If FALSE, will return the permutation results.
+#' @param perm.boot If nperms > 0 and if TRUE, perform bootstrapping (sampling with replacement). Otherwise, perform permutations (sampling without permutations)
+#' @param ncore Number of parallel processes to use
+#' @return A list of DMRs arising from each permutation or bootstrap. Will save as an RData if save==TRUE.
+#' @export
+maPerm <- function(ma,reads,nperms,combos=NULL,save=T,perm.boot=F,ncore=1)
 {
+	perm.combo <- F
 	args <- ma$args
 	test.two <- ma$data$test.two
 	samp <- ma$args$samp
@@ -133,7 +145,12 @@ maPerm <- function(ma,reads,nperms,combos=NULL,save=T,perm.combo=F,perm.boot=F,n
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-# given a directory with RData files saved by maPerm(), find them and merge the perms together, re-calculating the FDRs
+#' Merge permutations generated and saved by maPerm()
+#'
+#' The function maPerm() with save=TRUE will save permutations into RData files. Move all these RData files into the same directory, and indicate this directory using "dir". The output from maPermMerge() will be a list of DMRs detected in all permutations, and can be given to maPermFdr() to compute false discovery rates (FDRs).
+#' @param dir Directory containing RData files saved by maPerm() where save was equal to TRUE
+#' @return A list of DMRs arising from each permutation or bootstrap, merged across all the detected RData files.
+#' @export
 maPermMerge <- function(dir=".")
 {
 	rds <- dir(dir,pattern="maperm_",full.names=T)
@@ -150,27 +167,22 @@ maPermMerge <- function(dir=".")
 		rm(maperm)
 	}
 
-	# lapply had memory errors, sticking with one by one on the loop
-	# isn't so bad in terms of runtime
-	#mas <- mclapply(rds,function(x) {message("Loading: ",x);load(x);return(ma)},mc.cores=15)
-
-
-	# now just grab all the perms
 	mas <- do.call(c,mas)
 	message("Loaded ",length(mas)," permutations from ",length(rds)," maPerm() .rd files")
 
-	#load(rds[1])
-	#ma$data$maperm <- mas
-	#summary(ma$data$maperm)
-	#message("Loaded ",length(ma$data$maperm)," perms")
-	#tab <- methylaction:::maPermFdr(ma,recut.p=0.05)
-	#ma$fdr <- tab
 	return(mas)
 }
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-# Recompute FDRs based on permutation data in ma$data$maperm
+#' Compute false discovery rates (FDRs) from permuted DMR lists
+#'
+#' Using DMRs arising from permutations saved using maPerm(), compute FDRs for each pattern.
+#' @param ma Output object from methylaction()
+#' @param maperm Output object from maPerm()
+#' @param recut.p ANODEV p-value cutoff to use
+#' @return A table of FDRs for each pattern, stratified by "frequent" status
+#' @export
 maPermFdr <- function(ma,maperm,recut.p=0.05)
 {
 	samp <- ma$args$samp
@@ -267,13 +279,6 @@ maPermFdr <- function(ma,maperm,recut.p=0.05)
 	longdf <- rbind(real.m,mean.m,sd.m,cv.m,fdr.m)
 	longdf$var <- factor(longdf$var,levels=unique(longdf$var))
 	fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
-	#ma$perms$dmrs <- maperm
-	#ma$perms$fdr <- fdr
-	# Remove count columns from maperm to save space and not duplicate this data
-	#maperm2 <- lapply(maperm,function(x){
-		#values(x) <- as.data.frame(values(x))[,!(colnames(values(x)) %in% samp$sample)]
-		#return(x);
-	#})
 
 	return(fdr)
 }
@@ -284,8 +289,8 @@ maPermFdr <- function(ma,maperm,recut.p=0.05)
 # Internal Functions
 
 # --------------------------------------------------------------------
-# Draws permtuation orders out of combination space by running a series of chooses
-# This may be preferable to simply shuffling the sample label list because it ensures each permtation ends up with distinct configurations of groups
+# Draws permutation orders out of combination space by running a series of chooses
+# This may be preferable to simply shuffling the sample label list because it ensures each permutation ends up with distinct configurations of groups
 # a: size of group 1
 # b: size of group 2
 # c: size of group 3
@@ -300,7 +305,7 @@ getComboSpacePerms <- function(an,bn,cn,nperms,ncore=1)
 	# Generate all possible ways to draw the first group
 	co1 <- gtools::combinations(n=nn,r=an,v=samples)
 
-	# Want to pick one at random, then pick one of the next possible choices at random up to the number of permtuations
+	# Want to pick one at random, then pick one of the next possible choices at random up to the number of permutations
 	rand <- sample(1:nrow(co1),nperms,replace=F)
 
 	dorow <- function(x)

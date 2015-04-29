@@ -10,9 +10,9 @@ maSummary(ma)
 \item{ma}{Output object from methylaction()}
 }
 \value{
-A data.frame with the summary statistics.
+A data.frame with the summary statistics
 }
 \description{
-Will return information about number of windows/regions that pass cutoffs at each stage of the analysis. Useful for paramater tuning.
+Will return information about number of windows/regions that pass cutoffs at each stage of the analysis. Useful for parameter tuning.
 }
 

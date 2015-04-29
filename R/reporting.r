@@ -6,9 +6,9 @@
 # --------------------------------------------------------------------
 #' Summary stats for a run of methylaction()
 #'
-#' Will return information about number of windows/regions that pass cutoffs at each stage of the analysis. Useful for paramater tuning.
+#' Will return information about number of windows/regions that pass cutoffs at each stage of the analysis. Useful for parameter tuning.
 #' @param ma Output object from methylaction()
-#' @return A data.frame with the summary statistics.
+#' @return A data.frame with the summary statistics
 #' @export
 maSummary <- function(ma)
 {
@@ -59,13 +59,14 @@ maSummary <- function(ma)
 # --------------------------------------------------------------------
 #' Heatmap of the differentially methylated regions (DMRs) found by a run of methylaction()
 #'
-#' Will plot a heatmap of the DMRs based on the normalized read counts.
-#' @param samp Description of samples from readSampleInfo()
+#' Will plot a heatmap of the DMRs based on the normalized read counts. The square root of the mean per-window normalized read count is used so DMRs of different lengths are comparable.
 #' @param ma Output object from methylaction()
-#' @param pdf PDF file to output.
-#' @return Saves plot to disk.
+#' @param frequentonly Only plot for DMRs where "frequent" is TRUE
+#' @param bias Bias setting for the color scale
+#' @param file Where to save the image, if NULL, will print to current graphics device
+#' @return Saves plot to disk or outputs to graphics device
 #' @export
-maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
+maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
 {
 	sites <- ma$dmr
 
@@ -121,7 +122,10 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 
 	# Do plotting
 	#pdf(file=pdf,width=8,height=10.5)
-	png(filename=file,width=2550,height=3300,res=300)
+	if(!is.null(file))
+	{
+		png(filename=file,width=2550,height=3300,res=300)
+	}
 	sc <- c(benign="#4daf4a",low="#377eb8",high="#e41a1c")
 	samp <- ma$args$samp
 	sc <- unique(samp$color)
@@ -143,10 +147,12 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 
 	rs <- match(unique(sites$pattern),sites$pattern)
 	rs <- (rs-1)[-1] 
-	gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,colsep=cs, sepwidth=c(0.15,5),rowsep=rs)
-	dev.off()
-
-	message("Plot saved to ",file)
+	print(gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,colsep=cs, sepwidth=c(0.15,5),rowsep=rs))
+	if(!is.null(file))
+	{
+		dev.off()
+		message("Plot saved to ",file)
+	}
 }
 # --------------------------------------------------------------------
 
@@ -155,22 +161,22 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 #'
 #' Creates a BED file suitable for uploading as a custom track to the UCSC genome browser.
 #' @param ma Output list from a run of methylaction()
-#' @param path Folder to save the files in (defulat: current working directory)
-#' @param bigwig Convert to BIGWIG files, requires wigToBigWig in $PATH (default: FALSE)
-#' @param chrs
-#' @param bsgenome
-#' @param ncore
-#' @return Writes BED file to disk.
+#' @param reads Preprocessed reads/fragments data from getReads()
+#' @param path Folder to save the files in, will create if does not exist
+#' @param bigwig If TRUE, convert the BED to BIGWIG files, requires wigToBigWig in $PATH (obtain from the Jim Kent source tree)
+#' @param ncore Number of parallel processes to use
+#' @return Writes BED file to disk and optionally converts to a bigWig file.
 #' @export
-maTracks <- function(ma, path=".", bigwig=FALSE, chrs=NULL, bsgenome=NULL, ncore=NULL)
+maTracks <- function(ma, reads, path=".", bigwig=FALSE, ncore=1)
 {
-	if((bigwig==TRUE)&((is.null(chrs))|(is.null(bsgenome)))){stop("Must give chrs and bsgenome if bigwig=TRUE")}
+	#if((bigwig==TRUE)&((is.null(chrs))|(is.null(bsgenome)))){stop("Must give chrs and bsgenome if bigwig=TRUE")}
 	#if(is.null(counts)){stop("Must give list of data as counts argument")}
-
+	dir.create(path,showWarnings=F)
 	# Make one GRanges for all bin coordinates
 	#bins.gr <- suppressWarnings(do.call(c,lapply(names(counts$bins), function(x) GRanges(x,counts$bins[[x]]))))
-
-	chrlens <- seqlengths(bsgenome)[chrs]
+	#chrlens <- seqlengths(bsgenome)[chrs]
+	chrs <- seqlevels(reads[[1]])
+	chrlens <- seqlengths(reads[[1]])
 
 	signal <- ma$data$windows$signal.norm
 
@@ -208,10 +214,10 @@ maTracks <- function(ma, path=".", bigwig=FALSE, chrs=NULL, bsgenome=NULL, ncore
 #' Creates a BED file suitable for uploading as a custom track to the UCSC genome browser.
 #' @param ma Output list from a run of methylaction()
 #' @param file Name of BED file to create
-#' @param dmr.only Don't report regions without a significant pattern (show up listed as NS, default: FALSE)
+#' @param dmr.only Don't report regions without a significant pattern (show up listed as NS)
 #' @return Writes BED file to disk.
 #' @export
-maBed <- function(ma, file, dmr.only=F)
+maBed <- function(ma, file, dmr.only=TRUE)
 {
 	if(dmr.only==T)
 	{

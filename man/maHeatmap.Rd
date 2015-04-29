@@ -4,19 +4,21 @@
 \alias{maHeatmap}
 \title{Heatmap of the differentially methylated regions (DMRs) found by a run of methylaction()}
 \usage{
-maHeatmap(ma, frequentonly = TRUE, bias = 2, file)
+maHeatmap(ma, frequentonly = TRUE, bias = 2, file = NULL)
 }
 \arguments{
 \item{ma}{Output object from methylaction()}
 
-\item{samp}{Description of samples from readSampleInfo()}
+\item{frequentonly}{Only plot for DMRs where "frequent" is TRUE}
 
-\item{pdf}{PDF file to output.}
+\item{bias}{Bias setting for the color scale}
+
+\item{file}{Where to save the image, if NULL, will print to current graphics device}
 }
 \value{
-Saves plot to disk.
+Saves plot to disk or outputs to graphics device
 }
 \description{
-Will plot a heatmap of the DMRs based on the normalized read counts.
+Will plot a heatmap of the DMRs based on the normalized read counts. The square root of the mean per-window normalized read count is used so DMRs of different lengths are comparable.
 }
 

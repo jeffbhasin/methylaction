@@ -2,40 +2,46 @@
 % Please edit documentation in R/analysis.r
 \name{methylaction}
 \alias{methylaction}
-\title{Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq)}
+\title{Detect differentially methylated regions (DMRs) from windowed read counts from MBD-isolated genome sequencing (MiGS/MBD-seq) and similar techniques}
 \usage{
-methylaction(samp, counts, reads = NULL, winsize, poifdr = 0.1,
-  stageone.p = 0.05, joindist = 200, anodev.p = 0.05, post.p = 0.05,
-  freq = 2/3, adjust.var = NULL, minsize = 150, nperms = 0,
-  perm.boot = F, ncore = 1)
+methylaction(samp, counts, reads, poifdr = 0.1, stageone.p = 0.05,
+  anodev.p = 0.05, post.p = 0.05, freq = 2/3, minsize = 150,
+  joindist = 200, adjust.var = NULL, nperms = 0, perm.boot = F,
+  ncore = 1)
 }
 \arguments{
-\item{samp}{Description of samples from readSampleInfo()}
+\item{samp}{Sample data.frame from readSampleInfo()}
 
 \item{counts}{Preprocessed count data from getCounts()}
 
-\item{winsize}{Size of the windows used when counting.}
+\item{reads}{Preprocessed reads/fragments data from getReads()}
 
-\item{poifdr}{False discovery rate to use during initital filtering.}
+\item{poifdr}{False discovery rate to use during initial filtering and frequency calling. Changing this value will change the threshold used for calling the presence of methylation.}
 
-\item{stageone.p}{P-value cutoff for stage one testing.}
+\item{stageone.p}{P-value cutoff for the pairwise testing in stage one.}
 
-\item{anodev.p}{P-value cutoff for the analysis of deviance (ANODEV) in stage two testing (ignored for two group comparisions).}
+\item{anodev.p}{P-value cutoff for the analysis of deviance (ANODEV) in stage two testing.}
 
-\item{post.p}{P-value cutoff for post-tests (or for the single test stage two test in the two group case).}
+\item{post.p}{P-value cutoff for post-tests in stage two testing.}
 
-\item{minsize}{Minimum size for a reported region.}
+\item{freq}{Fraction of samples within groups that must agree with respect to methylation status in order for "frequent" to be "TRUE" in the output DMR list.}
 
-\item{ncore}{Number of cores to use.}
+\item{minsize}{Minimum size of DMRs to report (in bp)}
 
-\item{bsgenome}{b-string genome (bsgenome) object for the genome}
+\item{joindist}{Extend significant windows into DMRs over non-significant stage one windows between them up to this distance large (in bp)}
 
-\item{fragsize}{The average fragment length selected for in the sequencing experiment (used to extend reads when re-counting for regions in stage two testing).}
+\item{adjust.var}{Name of a column present in "samp" that will be used as a covariate adjustment in the stage two ANODEV generalized linear model (GLM)}
+
+\item{nperms}{Optional, perform this number of permutations after calling DMRs. Will create a data.table called "FDR" in the output list. See also maPerm(), maPermMerge(), and maPermFdr() for manual permutation running and FDR calculation.}
+
+\item{perm.boot}{If nperms > 0 and if TRUE, perform bootstrapping (sampling with replacement). Otherwise, perform permutations (sampling without permutations)}
+
+\item{ncore}{Number of parallel processes to use}
 }
 \value{
 A list containing detailed results from each stage of the analysis.
 }
 \description{
-Once the counts have been pre-processed, this function performs all the analysis. Detailed results from intermediate steps are stored in the output list object to analyze method performance and provide input for the summary and plotting functions.
+After the counts have been pre-processed, this function performs all the analysis. Detailed results from intermediate steps are stored in the output list object to analyze method performance and provide input for the summary, export, and plotting functions.
 }
 
