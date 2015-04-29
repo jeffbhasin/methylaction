@@ -382,49 +382,6 @@ getComboSpacePerms <- function(an,bn,cn,nperms,ncore=1)
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-binnedAverage <- function(bins, numvar)
-{
-	stopifnot(is(bins, "GRanges"))
-	stopifnot(is(numvar, "RleList"))
-	stopifnot(identical(seqlevels(bins), names(numvar)))
-	bins_per_chrom <- split(ranges(bins), seqnames(bins))
-	means_list <- lapply(names(numvar),
-	function(seqname)
-	{
-		views <- Views(numvar[[seqname]],bins_per_chrom[[seqname]])
-		viewMeans(views)
-	})
-	new_mcol <- as.integer(round(unsplit(means_list, as.factor(seqnames(bins)))))
-	#mcols(bins)[[mcolname]] <- new_mcol
-	#bins
-	return(new_mcol)
-}
-# --------------------------------------------------------------------
-
-# --------------------------------------------------------------------
-
-# Count for any GRanges object
-regionCounts <- function(cov, regions)
-{
-	ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=5)
-	ba2 <- mclapply(ba, Rle)
-	ba <- do.call(cbind,ba)
-	#ba <- round(ba,digits=0)
-	return(ba)
-}
-
-# Count in windows spanning the genome
-windowCounts <- function(reads, bsgenome, chrs, winsize)
-{
-	gb <- Repitools::genomeBlocks(genome=bsgenome, chrs=chrs, width=winsize)
-	cov <- mclapply(reads,coverage,mc.cores=ncore)
-	countmat <- regionCounts(cov=cov, regions=gb)
-	values(gb) <- countmat
-	return(gb)
-}
-# --------------------------------------------------------------------
-
-# --------------------------------------------------------------------
 # Initial Filtering
 filter <- function(counts, samp, poifdr)
 {
@@ -836,7 +793,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,winsize,anodev.p,adjust.var,post.p, fdr.filter, freq,ncore)
+testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,fragsize,winsize,anodev.p,adjust.var,post.p, fdr.filter, freq,ncore)
 {
 	message("Begin stage two testing")
 
@@ -845,15 +802,6 @@ testTwo <- function(samp,cov,reads,stagetwo.method,regions,sizefactors,fragsize,
 	if(stagetwo.method=="co")
 	{
 		recounts <- as.matrix(values(getCounts(samp=samp,reads=reads,ranges=regions,ncore=ncore)))
-	} else if(stagetwo.method=="fc")
-	{
-		gdf <- data.frame(GeneID=1:length(regions),Chr=seqnames(regions),Start=start(regions),End=end(regions),Strand="+")
-		recounts <- methylaction:::featureCountsDt(files=samp$bam, annot.ext=gdf, useMetaFeatures=F, allowMultiOverlap=T, read2pos="5", readExtension3=fragsize, strandSpecific="0", nthreads=ncore)$counts
-		colnames(recounts) <- samp$sample
-	} else if(stagetwo.method=="ac")
-	{
-		ba <- mclapply(cov, function(x) binnedAverage(bins=regions, numvar=x),mc.cores=1)
-		recounts <- do.call(cbind,ba)
 	} else
 	{
 		stop("Bad stagetwo.method type")
