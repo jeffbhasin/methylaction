@@ -57,13 +57,111 @@ maSummary <- function(ma)
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
+#' Karyogram of the differentially methylated regions (DMRs) found by a run of methylaction()
+#'
+#' Will plot a karyogram of the DMRs. A black line above shows regions of coverage by the sequencing experiment.
+#' @param ma Output object from methylaction()
+#' @param reads Preprocessed reads/fragments data from getReads()
+#' @param frequentonly Only plot for DMRs where "frequent" is TRUE
+#' @param patt Character vector of patterns to restrict plot to
+#' @param colors Character vector of custom colors (as hex codes) for each pattern in patt
+#' @param file Where to save the image (PDF format), if NULL, will print to current graphics device
+#' @return Saves plot to disk or outputs to graphics device
+#' @export
+maKaryogram <- function(ma,reads,frequentonly=TRUE,patt=NULL,colors=NULL,file=NULL)
+{
+	# Get DMRs
+	dmr.gr <- ma$dmr
+	
+	# Filter DMRs
+	if(frequentonly==TRUE)
+	{
+		dmr.gr <- dmr.gr[dmr.gr$frequent==TRUE]
+	}
+	if(!is.null(patt))
+	{
+		dmr.gr <- dmr.gr[dmr.gr$pattern %in% patt]
+	} else {
+		patt <- unique(dmr.gr$pattern)
+	}
+
+	# Want line on top showing everywhere we have reads (signal bins)
+	line.gr <- reduce(ma$data$windows$signal.norm, min.gapwidth=100000)
+	#line.gr <- reduce(line.gr,min.gapwidth=100000)
+
+	# Regions to plot, auto-use "pattern" as grouping
+	#data(hg19Ideogram, package = "biovizBase")
+	#ci <- getUCSCTable("chromInfo",genome=genome)
+	#seqlengths(dmr.gr) <- ci[match(names(seqlengths(dmr.gr)),ci$chrom),]$size
+	#seqlengths(dmr.gr) <- seqlengths(hg19Ideogram)[names(seqlengths(dmr.gr))]
+	#dmr.gr <- keepSeqlevels(dmr.gr, paste0("chr", c(1:22, "X")))
+	#seqlengths(line.gr) <- ci[match(names(seqlengths(line.gr)),ci$chrom),]$size
+	#seqlengths(line.gr) <- seqlengths(hg19Ideogram)[names(seqlengths(line.gr))]
+	#line.gr <- keepSeqlevels(line.gr, paste0("chr", c(1:22, "X")))
+
+	stopifnot(seqlevels(dmr.gr)==seqlevels(reads[[1]]))
+	stopifnot(seqlevels(line.gr)==seqlevels(reads[[1]]))
+	seqlengths(dmr.gr) <- seqlengths(reads[[1]])
+	seqlengths(line.gr) <- seqlengths(reads[[1]])
+
+	# Get genome structure
+	#data(hg19IdeogramCyto, package = "biovizBase")
+	#hg19 <- keepSeqlevels(hg19IdeogramCyto, paste0("chr", c(1:22, "X", "Y")))
+
+	# Plot
+	#dir.create("output/karyogram",showWarnings=FALSE)
+	
+	#specific to high
+	##e31a1c hyper 001
+	##fb9a99 hypo 110
+
+	#specific to low
+	##377eb8 hyper 010
+	##a6cee3 hypo 101
+
+	#specific to cancer
+	##ff7f00 hyper 011
+	##fdbf6f hypo 100
+
+	dmr.gr$pattern <- factor(dmr.gr$pattern, levels=patt)
+	morecolors <- function(n, rand=FALSE)
+	{
+		# Brewer's qualitative palette "Set1" only has 9 values
+		# Extrapolate from these to create palettes of any size
+		pal <- colorRampPalette(RColorBrewer::brewer.pal(9,"Set1"))(n)
+		if(rand==TRUE){pal <- sample(pal)}
+		pal
+	}
+	#colors <- c("#7570b3","#d95f02")
+	if(is.null(colors))
+	{
+		colors <- morecolors(length(patt))
+	}
+	#dmr.gr$pattern <- factor(dmr.gr$pattern, levels=c("001","110","010","101","011","100"))
+	#colors <- c("#e31a1c","#fb9a99","#377eb8","#a6cee3","#4d4d4d","#878787")
+
+	if(!is.null(file))
+	{
+		pdf(file=file,width=5,height=5)
+	}
+	print(ggbio::autoplot(seqinfo(dmr.gr)) + ggbio::layout_karyogram(dmr.gr, geom="rect",aes(color=pattern,fill=pattern)) + ggbio::layout_karyogram(line.gr, geom = "rect", ylim = c(14, 15), color="black",fill="black") + scale_color_manual(values=colors) + scale_fill_manual(values=colors) + theme(panel.background = element_rect(fill = 'white'),strip.background=element_rect(fill="white")))
+	if(!is.null(file))
+	{
+		dev.off()
+	}
+}
+
+
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 #' Heatmap of the differentially methylated regions (DMRs) found by a run of methylaction()
 #'
 #' Will plot a heatmap of the DMRs based on the normalized read counts. The square root of the mean per-window normalized read count is used so DMRs of different lengths are comparable.
 #' @param ma Output object from methylaction()
 #' @param frequentonly Only plot for DMRs where "frequent" is TRUE
 #' @param bias Bias setting for the color scale
-#' @param file Where to save the image, if NULL, will print to current graphics device
+#' @param file Where to save the image (PNG format), if NULL, will print to current graphics device
 #' @return Saves plot to disk or outputs to graphics device
 #' @export
 maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
