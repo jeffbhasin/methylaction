@@ -101,8 +101,8 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file)
 	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
 	#pal1 <- colorRampPalette(c("#313695","#74add1","#fee090","#f46d43"),bias=1)(pal1size)
 	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
-	pal1 <- colorRampPalette(rev(c("#313695","#4575b4","#fee090")),bias=2)(pal1size)
-	pal2 <- colorRampPalette(c("#fee090","#f46d43","#d73027","#a50026"),bias=2)(ncolors-pal1size)
+	pal1 <- colorRampPalette(rev(c("#313695","#4575b4","#fee090")),bias=bias)(pal1size)
+	pal2 <- colorRampPalette(c("#fee090","#f46d43","#d73027","#a50026"),bias=bias)(ncolors-pal1size)
 	cols <- c(rev(pal1),pal2)
 
 	# Do sorting
