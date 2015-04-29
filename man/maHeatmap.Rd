@@ -13,7 +13,7 @@ maHeatmap(ma, frequentonly = TRUE, bias = 2, file = NULL)
 
 \item{bias}{Bias setting for the color scale}
 
-\item{file}{Where to save the image, if NULL, will print to current graphics device}
+\item{file}{Where to save the image (PNG format), if NULL, will print to current graphics device}
 }
 \value{
 Saves plot to disk or outputs to graphics device
