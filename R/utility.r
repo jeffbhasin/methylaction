@@ -1,12 +1,15 @@
 # Functions for data input/output/preprocessing
 
+# ====================================================================
+# Exported Functions
+
 # --------------------------------------------------------------------
 #' Load a CSV containing required information about each sample
 #'
-#' The CSV file must contain the following columns: "sample" - unique sample IDs, "group" - group IDs, "bam" - path to BAM file containing aligned reads for the sample. Columns with other names will be ignored. Note that in subsequent reporting of pattern strings (where each digit represents a group), digits for each group will be ordered in the order they first appear in this samplesheet.
+#' The CSV file must contain the following columns: "sample" - unique sample IDs, "group" - group IDs, "bam" - path to BAM file containing aligned reads for the sample. Columns with other names will be retained but ignored. Note that in subsequent reporting of pattern strings (where each digit represents a group), digits for each group will be ordered in the order they first appear in this samplesheet.
 #' @param file Path to the CSV samplesheet to open. Must contain the columns described above.
-#' @param colors Vector of colors (one for each group) in same order as groups appear in the sample file. These will be uniform colors used in the plotting functions for these groups. Give colors as hex codes. If none provided they will be auto-selected with RColorBrewer. If there is a column named "color" in the CSV, then this will always be used.
-#' @return A data.frame of the samplesheet that will be valid input to the other function's "samp" arguments.
+#' @param colors Vector of colors (one for each group) in same order as groups appear in the sample file. These will be uniform colors used in the plotting functions for these groups. Give colors as hex codes. If none are provided they will be auto-selected using RColorBrewer. Alternatively, if there is a column named "color" in the CSV, then these will always be used.
+#' @return A data.frame of the samplesheet that will be valid input to the "samp" arguments of other functions.
 #' @export
 readSampleInfo <- function(file=NULL,colors=NULL)
 {
@@ -48,21 +51,18 @@ readSampleInfo <- function(file=NULL,colors=NULL)
 # --------------------------------------------------------------------
 #' Produce a GRanges with counts of overlapping reads for a set of ranges
 #'
-#' Will return a GenomicRanges object for non-overlapping windows genome-wide for the genome given as a bsgenome object for the chromosomes given in chrs. The values() of the GRanges will contain a table of counts for each sample at each window.
+#' Compute counts in non-overlapping windows genome-wide on the chromosomes given in chrs and return as a GRanges object. The values() of the GRanges will contain a table of counts for each sample at each window.
 #' @param samp Sample data.frame from readSampleInfo()
-#' @param bsgenome
-#' @param ranges
-#' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage.
-#' @param winsize Size of the non-overlapping windows.
+#' @param reads Output from getReads()
+#' @param ranges Count within regions given by a GRanges object only
+#' @param chrs Character vector of chromosome names to select
+#' @param winsize Size of the non-overlapping windows
+#' @param ncore Number of parallel processes to use
 #' @return A GenomicRanges object with values() containing a table of counts for each sample at each window.
 #' @export
 getCounts <- function(samp, reads, ranges=NULL, chrs=NULL, winsize=50, ncore=1)
 {
-	# Either give bsgenome to automatically tile the genome, or give a pre-defined ranges set
-	#if(is.null(bsgenome)&is.null(ranges)){stop("Need to give either bsgenome (count in genome-wide non-overlapping windows for the given genome) or ranges (count in pre-defined GenomicRanges object).")}
-	#if(!is.null(bsgenome)&!is.null(ranges)){stop("Please give either bsgenome or ranges, not both.")}
-
-	# Make GRanges of non-overlapping windows accross the genome
+	# Make GRanges of non-overlapping windows across the genome
 	if(is.null(ranges))
 	{
 		message("Generating Window Positions")
@@ -95,12 +95,12 @@ getCounts <- function(samp, reads, ranges=NULL, chrs=NULL, winsize=50, ncore=1)
 # --------------------------------------------------------------------
 #' Store GenomicRanges of BAM reads in a list
 #'
-#' Will return a list of GenomicRanges objects
+#' Store positions of BAM reads in a list of GRanges objects
 #' @param samp Sample data.frame from readSampleInfo()
-#' @param bsgenome
-#' @param chrs
-#' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage.
-#' @return A list of GenomicRanges objects.
+#' @param chrs Character vector of chromosome names to select
+#' @param fragsize Average fragment length from the sequencing experiment. Reads will be extended up to this size when computing coverage. If set to the value "paired", valid mate pairs for a paired-end sequencing experiment will be loaded instead.
+#' @param ncore Number of parallel processes to use
+#' @return A list of GenomicRanges objects where the ranges represent either extended reads or mate pairs from a BAM file.
 #' @export
 getReads <- function(samp, chrs, fragsize, ncore)
 {
@@ -114,12 +114,9 @@ getReads <- function(samp, chrs, fragsize, ncore)
 	check <- sapply(paste0(samp$bam,".bai"),file.exists)
 	if(sum(check)!=nrow(samp)){stop(paste0("Bam Index (.bai) file(s) could not be found for: ",toString(samp$bam[check==F])))}
 
-	# Validate asked for chrs are in the bsgenome
-	# Check that BAM has the chrs asked for
-	#if(sum(chrs %in% seqlevels(bsgenome)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(bsgenome))]), " in given bsgenome"))}
-
+	# Validate asked for chrs are in the BAM
 	b1 <- Rsamtools::BamFile(samp$bam[1])
-	#sl <- seqlengths(b1)
+	sl <- seqlengths(b1)
 	if(sum(chrs %in% seqlevels(b1)) != length(chrs)){stop(paste0("Could not find chrs: ",toString(chrs[!(chrs %in% seqlevels(b1))]), " in given BAM header"))}
 
 	# Use the index so we don't bother reading in from the unaligned chrs
@@ -139,14 +136,12 @@ getReads <- function(samp, chrs, fragsize, ncore)
     	} else {
     		bam.ga <- GenomicAlignments::readGAlignments(bampath, param = param)
     	}
-    	# Not using which
-	    #bam.ga3 <- bam.ga2[seqnames(bam.ga2) %in% chrs]
-    	#param <- Rsamtools::ScanBamParam(what=character(), flag=scanBamFlag(isUnmappedQuery=FALSE))
-    	#bam.ga2 <- GenomicAlignments::readGAlignments(bampath, param = param)
+
 		bam.gr <- as(bam.ga, "GRanges")
 		message("Extending read length to ",fragsize)
 		bam.gr <- resize(bam.gr, fragsize)
 		seqlevels(bam.gr) <- chrs
+		seqlengths(bam.gr) <- sl[chrs]
 		return(bam.gr)
 	}
 	reads <- mclapply(samp$bam,bam2gr,mc.cores=ncore)
@@ -155,9 +150,14 @@ getReads <- function(samp, chrs, fragsize, ncore)
 	return(reads)
 }
 # --------------------------------------------------------------------
+# ====================================================================
+
+# ====================================================================
+# Internal Functions
 
 # How much memory does any R object x take up?
 sizein <- function(x)
 {
 	format(object.size(x),units="auto")
 }
+# ====================================================================
