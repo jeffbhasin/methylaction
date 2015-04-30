@@ -1,7 +1,7 @@
 # methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)
 
 ## Documentation
-* [How to Use methylaction - DOC File](https://github.com/jeffbhasin/methylaction/blob/master/docs/methylaction-howto.docx)
+* [How to Use methylaction - DOCX File](https://github.com/jeffbhasin/methylaction/blob/master/docs/methylaction-howto.docx)
 * [Function Documentation - PDF Manual](https://github.com/jeffbhasin/methylaction/blob/master/docs/methylaction-manual.pdf)
 
 ## Installation
