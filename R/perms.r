@@ -181,9 +181,10 @@ maPermMerge <- function(dir=".")
 #' @param ma Output object from methylaction()
 #' @param maperm Output object from maPerm()
 #' @param recut.p ANODEV p-value cutoff to use
+#' @param wide Produce a more readable "wide" format summary table, sorted by "frequent" FDR
 #' @return A table of FDRs for each pattern, stratified by "frequent" status
 #' @export
-maPermFdr <- function(ma,maperm,recut.p=0.05)
+maPermFdr <- function(ma,maperm,recut.p=0.05,wide=FALSE)
 {
 	samp <- ma$args$samp
 	#maperm <- ma$data$maperm
@@ -280,6 +281,21 @@ maPermFdr <- function(ma,maperm,recut.p=0.05)
 	longdf$var <- factor(longdf$var,levels=unique(longdf$var))
 	fdr <- reshape::cast(longdf,formula="pattern+type~var",value="value")
 
+	if(wide==TRUE)
+	{
+		tab <- fdr
+		tab <- tab[tab$type %in% c("frequent","other"),c("pattern","type","nDMRs","FDRpercent")]
+		tab <- tab[tab$pattern!="all",]
+		c1 <- reshape::cast(tab,formula=pattern~type,value="nDMRs")
+		c2 <- reshape::cast(tab,formula=pattern~type,value="FDRpercent")
+		stopifnot(c1$pattern==c2$pattern)
+		df <- data.frame(frequent_dmrs=c1$frequent,frequent_fdr=c2$frequent,other_dmrs=c1$other,other_fdr=c2$other)
+		df <- cbind(pattern=c1$pattern,df)
+		out <- df[order(df$frequent_fdr,decreasing=F),]
+		out$frequent_fdr <- round(out$frequent_fdr,digits=1)
+		out$other_fdr <- round(out$other_fdr,digits=1)
+		fdr <- out
+	}
 	return(fdr)
 }
 # --------------------------------------------------------------------
