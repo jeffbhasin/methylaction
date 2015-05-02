@@ -4,7 +4,7 @@
 \alias{maPermFdr}
 \title{Compute false discovery rates (FDRs) from permuted DMR lists}
 \usage{
-maPermFdr(ma, maperm, recut.p = 0.05)
+maPermFdr(ma, maperm, recut.p = 0.05, wide = FALSE)
 }
 \arguments{
 \item{ma}{Output object from methylaction()}
@@ -12,6 +12,8 @@ maPermFdr(ma, maperm, recut.p = 0.05)
 \item{maperm}{Output object from maPerm()}
 
 \item{recut.p}{ANODEV p-value cutoff to use}
+
+\item{wide}{Produce a more readable "wide" format summary table, sorted by "frequent" FDR}
 }
 \value{
 A table of FDRs for each pattern, stratified by "frequent" status

@@ -312,60 +312,14 @@ maTracks <- function(ma, reads, path=".", bigwig=FALSE, ncore=1)
 #' Creates a BED file suitable for uploading as a custom track to the UCSC genome browser.
 #' @param ma Output list from a run of methylaction()
 #' @param file Name of BED file to create
-#' @param dmr.only Don't report regions without a significant pattern (show up listed as NS)
 #' @return Writes BED file to disk.
 #' @export
-maBed <- function(ma, file, dmr.only=TRUE)
+maBed <- function(ma, file)
 {
-	if(dmr.only==T)
-	{
-		# Only give ranges where we have sig pattern
-		call.gr <- ma$dmr
-		values(call.gr) <- NULL
-		call.gr$call <- as.character(ma$dmr$pattern)
-		call.gr$call[ma$dmr$sharp==F] <- paste0("111_",as.character(call.gr$call[ma$dmr$sharp==F]))
-	} else
-	{
-		# Give classification for the entire genome
-
-		# A: All zero bins
-		#a <- ma$data$windows$zero
-		#a <- reduce(a)
-		#a$call <- "zero"
-
-		# B: All below POI bins
-		#b <- ma$data$windows$filtered
-		#b <- reduce(b)
-		#b$call <- "filtered"
-
-		# C: NS in stage one
-		c <- ma$data$test.one$patterns[!(ma$data$test.one$patterns %over% ma$data$test.one$regions)]
-		values(c) <- NULL
-		c <- reduce(c)
-		c$call <- "NS1"
-
-		# D: NS in stage two ANODEV
-		d <- ma$data$test.two$ns
-		values(d) <- NULL
-		d <- reduce(d)
-		d$call <- "NS2"
-
-		# E: NS in stage two pairwise
-		e <- ma$data$test.two$sig[!(ma$data$test.two$sig %over% ma$dmr)]
-		values(e) <- NULL
-		e <- reduce(e)
-		e$call <- "NS3"
-
-		# F: Sig DMR called w/ pattern
-		f <- ma$dmr
-		values(f) <- NULL
-		f$call <- as.character(ma$dmr$pattern)
-		f$call[ma$dmr$sharp==F] <- paste0("111_",as.character(f$call[ma$dmr$sharp==F]))
-
-		# Merge
-		#call.gr <- c(a,b,c,d,e,f) # obvious that anything not in there is zero or filtered
-		call.gr <- c(d,e,f)
-	}
+	call.gr <- ma$dmr
+	values(call.gr) <- NULL
+	call.gr$call <- as.character(ma$dmr$pattern)
+	call.gr$call[ma$dmr$frequent==FALSE] <- paste0("other_",as.character(call.gr$call[ma$dmr$frequent==FALSE]))
 
 	# Make BED
 	bed <- data.frame(chr=seqnames(call.gr),start=as.integer(start(call.gr))-1,end=as.integer(end(call.gr)),name=call.gr$call, score=0, strand="+", thickStart=as.integer(start(call.gr))-1, thickEnd=as.integer(end(call.gr)))

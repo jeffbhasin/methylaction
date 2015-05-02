@@ -4,14 +4,12 @@
 \alias{maBed}
 \title{Write BED file of DMR regions}
 \usage{
-maBed(ma, file, dmr.only = TRUE)
+maBed(ma, file)
 }
 \arguments{
 \item{ma}{Output list from a run of methylaction()}
 
 \item{file}{Name of BED file to create}
-
-\item{dmr.only}{Don't report regions without a significant pattern (show up listed as NS)}
 }
 \value{
 Writes BED file to disk.
