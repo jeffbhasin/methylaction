@@ -1,16 +1,7 @@
-# methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)
+# Methylaction: Detecting differentially methylated regions (DMRs) that distinguish biological subtypes
 
 ## Documentation
-* [How to Use methylaction - DOCX File](https://github.com/jeffbhasin/methylaction/blob/master/docs/methylaction-howto.docx)
-* [Function Documentation - PDF Manual](https://github.com/jeffbhasin/methylaction/blob/master/docs/methylaction-manual.pdf)
-
-## Installation
-From R:
-```r
-library(devtools)
-install_github("jeffbhasin/goldmine")
-install_github("jeffbhasin/methylaction")
-```
+Please see the [Methylaction web page](http://jeffbhasin.github.io/methylaction) for documentation and a how-to.
 
 ## About
 Methylaction was developed by Jeffrey Bhasin, a graduate student at the [Cleveland Clinic Genomic Medicine Institute](http://www.lerner.ccf.org/gmi/).
