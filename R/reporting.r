@@ -245,7 +245,7 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
 
 	rs <- match(unique(sites$pattern),sites$pattern)
 	rs <- (rs-1)[-1] 
-	suppressWarnings(gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,colsep=cs, sepwidth=c(0.15,5),rowsep=rs))
+	suppressWarnings(gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc))
 	if(!is.null(file))
 	{
 		dev.off()
