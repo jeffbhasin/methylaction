@@ -3,8 +3,8 @@
 \docType{package}
 \name{methylaction-package}
 \alias{methylaction-package}
-\title{methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)}
+\title{MethylAction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)}
 \description{
-methylaction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)
+MethylAction: Differentially Methylated Regions (DMRs) from MBD-isolated Genome Sequencing (MiGS/MBD-seq)
 }
 
