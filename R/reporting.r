@@ -162,10 +162,12 @@ maKaryogram <- function(ma,reads,frequentonly=TRUE,patt=NULL,colors=NULL,file=NU
 #' @param frequentonly Only plot for DMRs where "frequent" is TRUE
 #' @param bias Bias setting for the color scale
 #' @param sep Add spaces between pattern groups on the rows and sample groups on the columns
+#' @param sort Sort by rowSums within each pattern group 
+#' @param sat Value (on square root scale) at which scale saturates (read counts at this level or above will all be the same hue) 
 #' @param file Where to save the image (PNG format), if NULL, will print to current graphics device
 #' @return Saves plot to disk or outputs to graphics device
 #' @export
-maHeatmap <- function(ma,frequentonly=TRUE,bias=2,sep=TRUE,file=NULL)
+maHeatmap <- function(ma,frequentonly=TRUE,bias=2,sep=TRUE,sort=F,sat=7,file=NULL)
 {
 	sites <- ma$dmr
 
@@ -187,8 +189,14 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,sep=TRUE,file=NULL)
 	# sqrt transform the matrix and make the means per-window
 	mat <- sqrt(mat)
 
+	# saturate high read counts using "max"
+	if(sum(mat>sat)>0)
+	{
+		mat[mat>sat] <- sat
+	}
+
 	# Get upper bound for saturation
-	upper <- max(mat)
+	upper <- sat
 
 	# Generate colors
 	ncolors <- 100
@@ -198,8 +206,18 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,sep=TRUE,file=NULL)
 	pal2 <- colorRampPalette(c("#fee090","#f46d43","#d73027","#a50026"),bias=bias)(ncolors-pal1size)
 	cols <- c(rev(pal1),pal2)
 
+	# If the max is less than sat, we need to zoom the scale in
+	if(max(mat)<sat)
+	{
+		cols <- cols[1:round(max(mat)/upper*100)]
+	}
+
 	# Do sorting
-	#mat <- mat[order(sites$pattern,rowSums(mat),decreasing=TRUE),]
+	if(sort==TRUE)
+	{
+		mat <- mat[order(sites$pattern,rowSums(mat),decreasing=TRUE),]
+		sites <- sites[order(sites$pattern,decreasing=TRUE)]
+	}
 	
 	# Do plotting
 	#pdf(file=pdf,width=8,height=10.5)
