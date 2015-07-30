@@ -161,10 +161,11 @@ maKaryogram <- function(ma,reads,frequentonly=TRUE,patt=NULL,colors=NULL,file=NU
 #' @param ma Output object from methylaction()
 #' @param frequentonly Only plot for DMRs where "frequent" is TRUE
 #' @param bias Bias setting for the color scale
+#' @param sep Add spaces between pattern groups on the rows and sample groups on the columns
 #' @param file Where to save the image (PNG format), if NULL, will print to current graphics device
 #' @return Saves plot to disk or outputs to graphics device
 #' @export
-maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
+maHeatmap <- function(ma,frequentonly=TRUE,bias=2,sep=TRUE,file=NULL)
 {
 	sites <- ma$dmr
 
@@ -183,41 +184,23 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
 	# Set scale inflection point based on POI cutoffs
 	inflect <- sqrt(mean(ma$data$fdr.filter$cuts))
 
+	# sqrt transform the matrix and make the means per-window
+	mat <- sqrt(mat)
+
 	# Get upper bound for saturation
-	#upper <- sqrt(round(quantile(mat,0.9999),0))
-	upper <- sqrt(max(mat))
-
-	# Adjust by size
-	#mat <- sqrt(mat/(width(sharpsites)/winsize))
-
-	# set saturation point (hard in matrix)
-	#mat[mat>upper] <- upper
+	upper <- max(mat)
 
 	# Generate colors
 	ncolors <- 100
 	per <- round((inflect/upper)*100,0)/100
 	pal1size <- round(per*ncolors)
-	#pal1 <- colorRampPalette(c("#fff5f0","#fff5f0","#fff5f0","#fee0d2","#fc9272","#fb6a4a","#ef3b2c"),bias=1)(pal1size)
-	#pal2 <- colorRampPalette(c("#ef3b2c","#cb181d","#a50f15","#67000d"),bias=1)(ncolors-pal1size)
-	#pal1 <- colorRampPalette(c("#313695","#fee090","#f46d43"),bias=1)(pal1size)
-	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
-	#pal1 <- colorRampPalette(c("#313695","#74add1","#fee090","#f46d43"),bias=1)(pal1size)
-	#pal2 <- colorRampPalette(c("#f46d43","#d73027","#a50026"),bias=1)(ncolors-pal1size)
 	pal1 <- colorRampPalette(rev(c("#313695","#4575b4","#fee090")),bias=bias)(pal1size)
 	pal2 <- colorRampPalette(c("#fee090","#f46d43","#d73027","#a50026"),bias=bias)(ncolors-pal1size)
 	cols <- c(rev(pal1),pal2)
 
 	# Do sorting
-	#ord <- order(ma$test.two$dmr$pattern)
-	#cnt <- cnt[ord,]
-	#allpatts <- apply(methylaction2:::getGroupPatterns(length(unique(ma$args$samp$group))),1,paste0,collapse="")
-	#fac <- factor(sites$pattern,levels=allpatts)
-	#cnt <- mat[order(sites$pattern,sites$anodev.padj),]
-	cnt <- mat
-	#cnt <- mat
-	# Do transformations
-	cnt <- sqrt(cnt/ma$args$winsize)
-
+	#mat <- mat[order(sites$pattern,rowSums(mat),decreasing=TRUE),]
+	
 	# Do plotting
 	#pdf(file=pdf,width=8,height=10.5)
 	if(!is.null(file))
@@ -245,7 +228,13 @@ maHeatmap <- function(ma,frequentonly=TRUE,bias=2,file=NULL)
 
 	rs <- match(unique(sites$pattern),sites$pattern)
 	rs <- (rs-1)[-1] 
-	suppressWarnings(gplots::heatmap.2(cnt,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc))
+	if(sep==TRUE)
+	{
+		suppressWarnings(gplots::heatmap.2(mat,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc,colsep=cs, sepwidth=c(0.15,5),rowsep=rs))
+	} else
+	{
+		suppressWarnings(gplots::heatmap.2(mat,Colv=F,Rowv=F,trace="none",labRow=F,col=cols,ColSideColors=csc))
+	}
 	if(!is.null(file))
 	{
 		dev.off()
