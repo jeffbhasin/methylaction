@@ -397,8 +397,40 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 	perwin.means <- do.call(cbind, lapply(colgroups, function(i) rowMeans(cnt[,i,drop=F])))
 	colnames(perwin.means) <- paste0(levels(samp$group),".perwin.mean")
 
-	dmrfreq <- cbind(dmr,cnt,perwin.means,meth.freq,meth.per)
+	# Add pairwise p-values and fold changes
+	pair.p <- do.call(cbind,lapply(testres,function(x) x$pval))
+	colnames(pair.p) <- paste0(colnames(pair.p),".p")
+
+	addFc <- function(mydmrs,offset=0.00001)
+	{
+		dat <- mydmrs
+		mygroups <- as.character(unique(samp$group))
+		pairs <- t(combn(mygroups,2))
+
+		pairs.fc <- lapply(1:nrow(pairs),function(x) {
+			a <- pairs[x,][2]
+			b <- pairs[x,][1]
+
+			avec <- dat[,colnames(dat)==paste0(a,".perwin.mean")]+offset
+			bvec <- dat[,colnames(dat)==paste0(b,".perwin.mean")]+offset
+
+			fc <- log2(avec/bvec)
+			#table(is.infinite(fc))
+			#table(is.na(fc))
+			return(fc)
+		})
+		names(pairs.fc) <- paste0(pairs[,2],"_over_",pairs[,1],".log2fc")
+
+		newcols <- do.call(cbind,pairs.fc)
+
+		mydmrs <- cbind(dat,as.data.frame(newcols))
+		return(mydmrs)
+	}
+
+	dmrfreq <- cbind(dmr,pair.p,cnt,perwin.means,meth.freq,meth.per)
 	#dmrfreq$dmrid <- 1:nrow(dmr)
+
+	dmrfreq <- addFc(mydmrs=dmrfreq)
 
 	# Want to know sharpness - should be all 0 groups are no more than 1/3 meth, and all 1 groups are no less than 2/3 meth
 	patts <- as.character(unique(dmrfreq$pattern))
