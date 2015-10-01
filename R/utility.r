@@ -133,13 +133,13 @@ getReads <- function(samp, chrs, fragsize, ncore)
     	if(fragsize=="paired")
     	{
     		bam.ga <- GenomicAlignments::readGAlignmentPairs(bampath, param = param)
+    		bam.gr <- as(bam.ga, "GRanges")
     	} else {
     		bam.ga <- GenomicAlignments::readGAlignments(bampath, param = param)
+    		bam.gr <- as(bam.ga, "GRanges")
+			message("Extending read length to ",fragsize)
+			bam.gr <- resize(bam.gr, fragsize)
     	}
-
-		bam.gr <- as(bam.ga, "GRanges")
-		message("Extending read length to ",fragsize)
-		bam.gr <- resize(bam.gr, fragsize)
 		seqlevels(bam.gr) <- chrs
 		seqlengths(bam.gr) <- sl[chrs]
 		return(bam.gr)
