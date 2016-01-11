@@ -21,5 +21,4 @@ Imports:
     Repitools,
     reshape,
     Rsubread,
-    R.utils,
-	ggbio
+    R.utils
