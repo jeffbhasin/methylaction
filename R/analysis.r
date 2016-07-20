@@ -168,7 +168,7 @@ testOne <- function(samp,bins,signal.norm,chrs,sizefactors,stageone.p=0.05,minsi
 	if(!all(sapply(testres,nrow)==length(bins))){stop("Ran out of memory during testing, try reducing ncore")}
 
 	message("Calling Patterns")
-	patt <- methylaction:::callPatternsN(res=testres,cutoff=stageone.p)
+	patt <- methylaction:::callPatternsN(res=testres,cutoff=stageone.p,samp=samp)
 
 	# Make means columns
 	colgroups <- lapply(unique(samp$group),function(x) samp[group==x,]$sample)
@@ -361,7 +361,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 
 	if(!all(sapply(testres,nrow)==nrow(recounts.sig))){stop("Ran out of memory during testing, try reducing ncore")}
 
-	patt <- methylaction:::callPatternsN(res=testres, cutoff=post.p)
+	patt <- methylaction:::callPatternsN(res=testres, cutoff=post.p, samp=samp)
 
 	test.two$sig <- regions[anodev.keep]
 	values(test.two$sig) <- patt
@@ -663,7 +663,7 @@ getDecisionTable <- function(mygroups,human=FALSE)
 
 # --------------------------------------------------------------------
 # call patterns genome wide, generalized to n-groups
-callPatternsN <- function(res,cutoff=0.05)
+callPatternsN <- function(res,cutoff=0.05,samp)
 {
 	# add directions to testres
 	getDirection <- function(x)
