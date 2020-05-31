@@ -390,7 +390,7 @@ testTwo <- function(samp,cov,reads,stagetwo.method="co",regions,sizefactors,frag
 	meth.freq <- do.call(cbind, lapply(colgroups, function(i) rowSums(meth[,i,drop=F])))
 
 	# call percentages
-	meth.per <- t(t(meth.freq)/as.vector(table(samp$group)))
+	meth.per <- t(t(meth.freq)/as.vector(table(samp$group)[colnames(meth.freq)]))
 	colnames(meth.per) <- paste0(colnames(meth.per),".per")
 
 	# Make means columns - for the per window counts
